@@ -1,12 +1,8 @@
 {
-  "name": "Városi objektum térkép",
-  "short_name": "Városi térkép",
-  "start_url": "./index.html",
+  "name": "CityMap",
+  "short_name": "CityMap",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#2c7be5",
-  "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
+  "theme_color": "#2c7be5"
 }

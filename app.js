@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.6";
+const APP_VERSION = "0.4.7";
 
 let map;
 let addMode = false;
@@ -104,16 +104,18 @@ function idText(id) {
 function popupHtml(m) {
   return `
   <div style="min-width:220px">
-    <div>Azonosító: <b>${idText(m.id)}</b></div>
-	<div>Cím: ${escapeHtml(m.address)}</div>
-    <div style="margin-top:4px">Típus: <b>${escapeHtml(m.typeLabel)}</b></div>  
-    <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
-    ${m.notes ? `<div style="margin-top:6px"> Megjegyzés: <i>${escapeHtml(m.notes)}</i></div>` : ""}
-    <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
+    <div><b>Azonosítószám:</b> ${idText(m.id)}</div>
+    <div><b>Cím:</b> ${escapeHtml(m.address)}</div>
+    <div><b>Típus:</b> ${escapeHtml(m.typeLabel)}</div>
+    <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
+    <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
+
+    <div style="margin-top:10px;display:flex;justify-content:flex-end">
       <button data-del="${m.id}">Törlés</button>
     </div>
   </div>`;
 }
+
 
 function wirePopupDelete(marker, dbId) {
   marker.on("popupopen", (e) => {

@@ -1,10 +1,30 @@
-const APP_VERSION = "0.4.9";
+const APP_VERSION = "5.0";
 
 let map;
 let addMode = false;
 let pendingLatLng = null;
 
-const markerLayers = new Map(); // dbId -> leaflet marker
+const markerLayers = new Map();
+
+const TYPE_ICON = {
+  PAD: "green",
+  ZEBRA: "yellow",
+  TABLA: "blue",
+  DEFAULT: "grey"
+};
+
+function iconForType(type) {
+  const c = TYPE_ICON[type] || TYPE_ICON.DEFAULT;
+  return new L.Icon({
+    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${c}.png`,
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+  });
+}
+ // dbId -> leaflet marker
 
 function escapeHtml(s) {
   return String(s || "")
@@ -104,16 +124,18 @@ function idText(id) {
 function popupHtml(m) {
   return `
   <div style="min-width:220px">
-    <div>Azonosító: <b>${idText(m.id)}</b></div>
-    <div style="margin-top:4px"><b>${escapeHtml(m.typeLabel)}</b></div>
-    <div>${escapeHtml(m.address)}</div>
-    <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
-    ${m.notes ? `<div style="margin-top:6px"><i>${escapeHtml(m.notes)}</i></div>` : ""}
-    <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
+    <div><b>Azonosítószám:</b> ${idText(m.id)}</div>
+    <div><b>Cím:</b> ${escapeHtml(m.address)}</div>
+    <div><b>Típus:</b> ${escapeHtml(m.typeLabel)}</div>
+    <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
+    <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
+
+    <div style="margin-top:10px;display:flex;justify-content:flex-end">
       <button data-del="${m.id}">Törlés</button>
     </div>
   </div>`;
 }
+
 
 function wirePopupDelete(marker, dbId) {
   marker.on("popupopen", (e) => {
@@ -136,27 +158,20 @@ async function getMarker(id) {
 }
 
 function addMarkerToMap(m) {
-  const def = getTypeDef(m.type);
-  const z = map.getZoom();
-  const r = markerRadiusForZoom(z);
-  const style = styleForType(m.type);
+  const mk = L.marker([m.lat, m.lng], { draggable: true, icon: iconForType(m.type) }).addTo(map);
+  mk.bindPopup(popupHtml(m));
+  wirePopupDelete(mk, m.id);
 
-  const layer = L.circleMarker([m.lat, m.lng], {
-    radius: r,
-    color: def.color,
-    fillColor: def.color,
-    fillOpacity: 0.9,
-    weight: style.weight,
-    dashArray: style.dashArray || null
+  mk.on("dragend", async (e) => {
+    const p = e.target.getLatLng();
+    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng });
+
+    const updated = await getMarker(m.id);
+    if (updated) mk.setPopupContent(popupHtml(updated));
   });
 
-  layer.addTo(map);
-  layer.bindPopup(popupHtml(m));
-  wirePopupDelete(layer, m.id);
-
-  markerLayers.set(m.id, layer);
+  markerLayers.set(m.id, mk);
 }
-
 
 async function loadMarkers() {
   const all = await DB.getAllMarkers();
@@ -306,12 +321,3 @@ async function checkForUpdateOnline() {
     }
   } catch (e) {}
 }
-
-
-map.on("zoomend", () => {
-  const z = map.getZoom();
-  const r = markerRadiusForZoom(z);
-  for (const layer of markerLayers.values()) {
-    if (layer.setRadius) layer.setRadius(r);
-  }
-});

@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.8";
+const APP_VERSION = "0.4.9";
 
 let map;
 let addMode = false;
@@ -11,6 +11,24 @@ const TYPE_DEFS = {
   ZEBRA: { shape: "square",   color: "#facc15" },
   TABLA: { shape: "triangle", color: "#2563eb" }
 };
+
+
+function markerRadiusForZoom(z) {
+  if (z <= 14) return 6;
+  if (z <= 16) return 8;
+  if (z <= 18) return 10;
+  return 12;
+}
+
+function svgPathForShape(shape, r) {
+  if (shape === "square") {
+    return `M ${-r} ${-r} L ${r} ${-r} L ${r} ${r} L ${-r} ${r} Z`;
+  }
+  if (shape === "triangle") {
+    return `M 0 ${-r} L ${r} ${r} L ${-r} ${r} Z`;
+  }
+  return null;
+}
 
 const DEFAULT_TYPE_DEF = {
   shape: "circle",
@@ -155,34 +173,38 @@ async function getMarker(id) {
 
 function addMarkerToMap(m) {
   const def = getTypeDef(m.type);
-  const latlng = [m.lat, m.lng];
+  const z = map.getZoom();
+  const r = markerRadiusForZoom(z);
   const color = def.color;
 
   let layer;
 
-  if (def.shape === "square") {
-    const d = 0.00008;
-    layer = L.rectangle([
-      [latlng[0] - d, latlng[1] - d],
-      [latlng[0] + d, latlng[1] + d]
-    ], {
-      color, fillColor: color, fillOpacity: 0.9, weight: 2
-    });
-  } else if (def.shape === "triangle") {
-    const d = 0.00009;
-    layer = L.polygon([
-      [latlng[0] + d, latlng[1]],
-      [latlng[0] - d, latlng[1] - d],
-      [latlng[0] - d, latlng[1] + d]
-    ], {
-      color, fillColor: color, fillOpacity: 0.9, weight: 2
+  if (def.shape === "circle") {
+    layer = L.circleMarker([m.lat, m.lng], {
+      radius: r,
+      color,
+      fillColor: color,
+      fillOpacity: 0.9,
+      weight: 2
     });
   } else {
-    layer = L.circleMarker(latlng, {
-      radius: 8,
-      color, fillColor: color, fillOpacity: 0.9, weight: 2
-    });
+    const path = svgPathForShape(def.shape, r);
+    layer = L.path({
+      d: path,
+      fill: true,
+      fillColor: color,
+      color,
+      weight: 2
+    }).setLatLng([m.lat, m.lng]);
   }
+
+  layer.addTo(map);
+  layer.bindPopup(popupHtml(m));
+  wirePopupDelete(layer, m.id);
+
+  markerLayers.set(m.id, layer);
+}
+
 
   layer.addTo(map);
   layer.bindPopup(popupHtml(m));
@@ -347,3 +369,12 @@ async function checkForUpdateOnline() {
     }
   } catch (e) {}
 }
+
+
+map.on("zoomend", async () => {
+  for (const [id, layer] of markerLayers) {
+    map.removeLayer(layer);
+    const m = await getMarker(id);
+    if (m) addMarkerToMap(m);
+  }
+});

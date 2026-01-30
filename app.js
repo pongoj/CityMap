@@ -1,10 +1,26 @@
-const APP_VERSION = "0.4.7";
+const APP_VERSION = "0.4.8";
 
 let map;
 let addMode = false;
 let pendingLatLng = null;
 
-const markerLayers = new Map(); // dbId -> leaflet marker
+const markerLayers = new Map();
+
+const TYPE_DEFS = {
+  PAD:   { shape: "circle",   color: "#16a34a" },
+  ZEBRA: { shape: "square",   color: "#facc15" },
+  TABLA: { shape: "triangle", color: "#2563eb" }
+};
+
+const DEFAULT_TYPE_DEF = {
+  shape: "circle",
+  color: "#6b7280"
+};
+
+function getTypeDef(typeId) {
+  return TYPE_DEFS[typeId] || DEFAULT_TYPE_DEF;
+}
+ // dbId -> leaflet marker
 
 function escapeHtml(s) {
   return String(s || "")
@@ -138,20 +154,50 @@ async function getMarker(id) {
 }
 
 function addMarkerToMap(m) {
-  const mk = L.marker([m.lat, m.lng], { draggable: true }).addTo(map);
-  mk.bindPopup(popupHtml(m));
-  wirePopupDelete(mk, m.id);
+  const def = getTypeDef(m.type);
+  const latlng = [m.lat, m.lng];
+  const color = def.color;
 
-  mk.on("dragend", async (e) => {
-    const p = e.target.getLatLng();
+  let layer;
+
+  if (def.shape === "square") {
+    const d = 0.00008;
+    layer = L.rectangle([
+      [latlng[0] - d, latlng[1] - d],
+      [latlng[0] + d, latlng[1] + d]
+    ], {
+      color, fillColor: color, fillOpacity: 0.9, weight: 2
+    });
+  } else if (def.shape === "triangle") {
+    const d = 0.00009;
+    layer = L.polygon([
+      [latlng[0] + d, latlng[1]],
+      [latlng[0] - d, latlng[1] - d],
+      [latlng[0] - d, latlng[1] + d]
+    ], {
+      color, fillColor: color, fillOpacity: 0.9, weight: 2
+    });
+  } else {
+    layer = L.circleMarker(latlng, {
+      radius: 8,
+      color, fillColor: color, fillOpacity: 0.9, weight: 2
+    });
+  }
+
+  layer.addTo(map);
+  layer.bindPopup(popupHtml(m));
+  wirePopupDelete(layer, m.id);
+
+  layer.on("dragend", async () => {
+    const p = layer.getLatLng ? layer.getLatLng() : layer.getBounds().getCenter();
     await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng });
-
     const updated = await getMarker(m.id);
-    if (updated) mk.setPopupContent(popupHtml(updated));
+    if (updated) layer.setPopupContent(popupHtml(updated));
   });
 
-  markerLayers.set(m.id, mk);
+  markerLayers.set(m.id, layer);
 }
+
 
 async function loadMarkers() {
   const all = await DB.getAllMarkers();

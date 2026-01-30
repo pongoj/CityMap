@@ -105,10 +105,10 @@ function popupHtml(m) {
   return `
   <div style="min-width:220px">
     <div>Azonosító: <b>${idText(m.id)}</b></div>
-    <div style="margin-top:4px"><b>${escapeHtml(m.typeLabel)}</b></div>
-    <div>${escapeHtml(m.address)}</div>
+	<div>Cím: ${escapeHtml(m.address)}</div>
+    <div style="margin-top:4px">Típus: <b>${escapeHtml(m.typeLabel)}</b></div>  
     <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
-    ${m.notes ? `<div style="margin-top:6px"><i>${escapeHtml(m.notes)}</i></div>` : ""}
+    ${m.notes ? `<div style="margin-top:6px"> Megjegyzés: <i>${escapeHtml(m.notes)}</i></div>` : ""}
     <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
       <button data-del="${m.id}">Törlés</button>
     </div>

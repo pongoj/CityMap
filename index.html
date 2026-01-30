@@ -1,19 +1,42 @@
 <!DOCTYPE html>
 <html lang="hu">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CityMap</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
-  <style>
-    html, body, #map { height: 100%; margin: 0; }
-  </style>
+<meta charset="utf-8"/>
+<title>Városi objektum térkép</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+html,body,#map{height:100%;margin:0}
+.toolbar{position:absolute;top:10px;left:50px;z-index:1000;background:#fff;padding:6px;border-radius:6px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center}
+.modal-content{background:#fff;padding:16px;border-radius:8px;width:320px}
+label{display:block;margin-top:8px}
+</style>
 </head>
 <body>
-  <div id="map"></div>
+<div class="toolbar"><button id="btnAdd">Objektum hozzáadása</button></div>
+<div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script type="module" src="app.js"></script>
+<div id="markerModal" class="modal">
+<div class="modal-content">
+<h3>Objektum adatai</h3>
+<label>Cím <input id="fAddress"/></label>
+<label>Típus
+<select id="fType"><option>Pad</option><option>Zebra</option><option>Tábla</option></select>
+</label>
+<label>Állapot
+<select id="fState"><option>Új</option><option>Felújított</option><option>Normál</option><option>Rossz</option><option>Balesetveszélyes</option></select>
+</label>
+<div style="margin-top:10px;text-align:right">
+<button id="btnCancel">Mégse</button>
+<button id="btnSave">Mentés</button>
+</div>
+</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

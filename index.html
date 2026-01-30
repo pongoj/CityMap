@@ -24,11 +24,6 @@
     .btn-add{ background:#2c7be5; color:#fff; }
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
-    .sel{
-      border:1px solid #d1d5db; border-radius:12px;
-      padding:8px 10px; font-weight:700; background:#fff;
-    }
-    .btn-list{ background:#111827; color:#fff; }
 
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
@@ -45,37 +40,6 @@
       display:none;
       max-width: calc(100vw - 20px);
     }
-
-    /* Side panel */
-    #sidePanel{
-      position:fixed; top:10px; right:10px; z-index:1500;
-      width:min(360px, calc(100vw - 20px));
-      max-height: calc(100vh - 20px);
-      background: rgba(255,255,255,.96);
-      border-radius: 16px;
-      box-shadow: 0 10px 28px rgba(0,0,0,.22);
-      display:none; flex-direction:column;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-    }
-    #sidePanel header{
-      display:flex; align-items:center; justify-content:space-between;
-      padding: 10px 12px; border-bottom:1px solid #e5e7eb;
-    }
-    #sidePanel header b{ font-size: 14px; }
-    #sidePanel .sp-actions{ display:flex; gap:8px; }
-    #sidePanel .sp-actions button{ border:0; padding:8px 10px; border-radius:12px; font-weight:800; cursor:pointer; }
-    #sidePanel .sp-actions .ghost{ background:#f3f4f6; color:#111827; }
-    #sidePanel .sp-actions .prim{ background:#2c7be5; color:#fff; }
-    #sidePanel .sp-body{ padding: 10px 12px; overflow:auto; }
-    #sidePanel input{ width:100%; box-sizing:border-box; padding:10px; border:1px solid #d1d5db; border-radius:12px; font-size:14px; }
-    #markerList{ margin-top:10px; display:flex; flex-direction:column; gap:8px; }
-    .list-item{
-      border:1px solid #e5e7eb; border-radius: 14px; padding:10px;
-      cursor:pointer; background:#fff;
-    }
-    .list-item .t{ font-weight:900; }
-    .list-item .a{ font-size:12px; color:#374151; margin-top:2px; }
-    .list-item .s{ font-size:12px; color:#6b7280; margin-top:4px; }
 
     /* Modal */
     .modal{
@@ -112,12 +76,9 @@
 <body>
   <div class="toolbar">
     <button class="btn btn-add" id="btnAdd">Objektum hozzáadása</button>
-    <button class="btn btn-list" id="btnList">Lista</button>
-    <select class="sel" id="fltType" title="Típus szűrő"></select>
-    <select class="sel" id="fltStatus" title="Állapot szűrő"></select>
     <button class="btn btn-loc" id="btnMyLoc">Saját helyem</button>
     <button class="btn btn-clear" id="btnClear">Összes törlése</button>
-</div>
+  </div>
 
   <div id="map"></div>
   <div id="appVersion">v0.0.0</div>
@@ -148,26 +109,6 @@
       <div class="modal-actions">
         <button class="btn btn-ghost" id="btnCancel">Mégse</button>
         <button class="btn btn-save" id="btnSave">Mentés</button>
-      </div>
-    </div>
-  </div>
-
-
-  <div id="sidePanel">
-    <header>
-      <b>Markerek</b>
-      <div class="sp-actions">
-        <button class="ghost" id="btnSpClose">Bezár</button>
-        <button class="prim" id="btnExport">Export</button>
-        <button class="prim" id="btnImport">Import</button>
-      </div>
-    </header>
-    <div class="sp-body">
-      <input id="txtSearch" placeholder="Keresés címben / megjegyzésben...">
-      <div id="markerList"></div>
-      <input type="file" id="fileImport" accept="application/json" style="display:none">
-      <div class="small" style="margin-top:10px">
-        Tipp: a listában bökj egy elemre – középre ugrik és megnyitja a popupot.
       </div>
     </div>
   </div>

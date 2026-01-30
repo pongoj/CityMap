@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.1";
+const APP_VERSION = "0.4.0";
 
 let map;
 let addMode = false;
@@ -35,42 +35,11 @@ function closeModal() {
   pendingLatLng = null;
 }
 
-let myLocationMarker = null;
-
 async function centerToMyLocation() {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const ll = [lat, lng];
-
-        map.setView(ll, 20);
-
-        if (myLocationMarker) {
-          map.removeLayer(myLocationMarker);
-        }
-
-        let addressText = "Saját hely";
-        try {
-          const r = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-          );
-          const j = await r.json();
-          if (j.display_name) addressText = j.display_name;
-        } catch (e) {}
-
-        myLocationMarker = L.circleMarker(ll, {
-          radius: 8,
-          color: "#2563eb",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.9
-        }).addTo(map);
-
-        myLocationMarker.bindPopup(
-          `<b>Saját hely</b><br>${addressText}`
-        );
-
+      (pos) => {
+        map.setView([pos.coords.latitude, pos.coords.longitude], 20);
         resolve(true);
       },
       () => resolve(false),
@@ -231,7 +200,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   map.on("click", (e) => {
-    if (!addMode) return;
+    if (!addMode) {
+      openModal(e.latlng);
+      return;
+    }
     addMode = false;
     openModal(e.latlng);
   });

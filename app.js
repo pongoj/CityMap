@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.2";
+const APP_VERSION = "0.4.3";
 
 let map;
 let addMode = false;
@@ -194,12 +194,35 @@ async function saveMarker() {
 
 function registerSW() {
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (window.__cmReloaded) return;
+    window.__cmReloaded = true;
+    location.reload();
+  });
+
+  navigator.serviceWorker.register("./service-worker.js").then((reg) => {
+    if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+
+    reg.addEventListener("updatefound", () => {
+      const w = reg.installing;
+      if (!w) return;
+      w.addEventListener("statechange", () => {
+        if (w.state === "installed" && navigator.serviceWorker.controller) {
+          w.postMessage({ type: "SKIP_WAITING" });
+        }
+      });
+    });
+
+    reg.update().catch(() => {});
+  }).catch(() => {});
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  window.addEventListener("online", checkForUpdateOnline);
   document.getElementById("appVersion").textContent = "v" + APP_VERSION;
   registerSW();
+  checkForUpdateOnline();
 
   map = L.map("map");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -240,3 +263,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await loadMarkers();
 });
+
+
+async function checkForUpdateOnline() {
+  if (!navigator.onLine) return;
+
+  try {
+    const r = await fetch("./app.js", { cache: "no-store" });
+    const t = await r.text();
+    const m = t.match(/const\s+APP_VERSION\s*=\s*"([^"]+)"/);
+    if (m && m[1] !== APP_VERSION) {
+      location.reload();
+    }
+  } catch (e) {}
+}

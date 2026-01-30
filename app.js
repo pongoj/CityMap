@@ -308,6 +308,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!ok) map.setView([47.4979, 19.0402], 15);
 
   await loadMarkers();
+  
+  map.on("zoomend", () => {
+  const z = map.getZoom();
+  markerLayers.forEach((mk, id) => {
+    const data = mk.__data;
+    if (!data) return;
+    mk.setIcon(resizedIconForType(data.type, z));
+  });
+});
 });
 
 
@@ -352,11 +361,4 @@ function resizedIconForType(type, zoom) {
 }
 
 
-map.on("zoomend", () => {
-  const z = map.getZoom();
-  markerLayers.forEach((mk, id) => {
-    const data = mk.__data;
-    if (!data) return;
-    mk.setIcon(resizedIconForType(data.type, z));
-  });
-});
+

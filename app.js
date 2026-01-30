@@ -1,4 +1,4 @@
-const APP_VERSION = "5.0";
+const APP_VERSION = "5.1";
 
 let map;
 let addMode = false;
@@ -14,6 +14,7 @@ const TYPE_ICON = {
 };
 
 function iconForType(type) {
+
   const c = TYPE_ICON[type] || TYPE_ICON.DEFAULT;
   return new L.Icon({
     iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${c}.png`,
@@ -159,6 +160,7 @@ async function getMarker(id) {
 
 function addMarkerToMap(m) {
   const mk = L.marker([m.lat, m.lng], { draggable: true, icon: iconForType(m.type) }).addTo(map);
+mk.__data = m;
   mk.bindPopup(popupHtml(m));
   wirePopupDelete(mk, m.id);
 
@@ -321,3 +323,40 @@ async function checkForUpdateOnline() {
     }
   } catch (e) {}
 }
+
+
+function markerScaleForZoom(z) {
+  if (z >= 18) return 1.0;
+  if (z === 17) return 0.95;
+  if (z === 16) return 0.85;
+  if (z === 15) return 0.75;
+  if (z === 14) return 0.65;
+  return 0.6;
+}
+
+function resizedIconForType(type, zoom) {
+  const base = iconForType(type);
+  const scale = markerScaleForZoom(zoom);
+  const size = [25 * scale, 41 * scale];
+  const anchor = [12 * scale, 41 * scale];
+  const popup = [1 * scale, -34 * scale];
+
+  return new L.Icon({
+    iconUrl: base.options.iconUrl,
+    shadowUrl: base.options.shadowUrl,
+    iconSize: size,
+    iconAnchor: anchor,
+    popupAnchor: popup,
+    shadowSize: base.options.shadowSize
+  });
+}
+
+
+map.on("zoomend", () => {
+  const z = map.getZoom();
+  markerLayers.forEach((mk, id) => {
+    const data = mk.__data;
+    if (!data) return;
+    mk.setIcon(resizedIconForType(data.type, z));
+  });
+});

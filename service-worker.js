@@ -6,12 +6,11 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "0.4.1" és itt: CACHE_VERSION = "v0.4.1"
-const CACHE_VERSION = "v0.4.5";
+const CACHE_VERSION = "v0.4.6";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
   "./",
-  "./index.html",
   "./app.js",
   "./db.js",
   "./manifest.json",
@@ -41,8 +40,14 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // csak saját origin cache (CDN-t nem cache-elünk most)
+  // csak saját origin
   if (url.origin !== self.location.origin) return;
+
+  // index.html mindig hálózatról
+  if (url.pathname === "/" || url.pathname.endsWith("index.html")) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then(cached => cached || fetch(event.request))

@@ -11,7 +11,7 @@
     html, body, #map { height: 100%; margin: 0; }
 
     .toolbar{
-      position:absolute; top:10px; left:10px; z-index:1000;
+      position:fixed; top:10px; left:60px; z-index:2000;
       background: rgba(255,255,255,.92);
       padding: 8px; border-radius: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,.18);
@@ -29,47 +29,25 @@
       position:fixed; left:8px; bottom:8px; z-index:1200;
       background: rgba(255,255,255,.86);
       padding: 4px 10px; border-radius: 10px;
-      font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      font: 12px system-ui;
       box-shadow: 0 2px 8px rgba(0,0,0,.14);
     }
     #hint{
       position:fixed; left:10px; top:60px; z-index:1200;
       background: rgba(0,0,0,.65); color:#fff;
       padding: 8px 10px; border-radius: 12px;
-      font: 13px system-ui, -apple-system, Segoe UI, Roboto, Arial;
       display:none;
-      max-width: calc(100vw - 20px);
     }
 
-    /* Modal */
     .modal{
-      position:fixed; inset:0; z-index:2000;
+      position:fixed; inset:0; z-index:3000;
       background: rgba(0,0,0,.45);
       display:none; align-items:center; justify-content:center;
     }
     .modal-content{
       width: min(380px, calc(100vw - 24px));
       background:#fff; border-radius: 16px; padding: 16px;
-      box-shadow: 0 12px 28px rgba(0,0,0,.25);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
     }
-    .row{ display:flex; gap:10px; }
-    label{ display:block; margin-top: 10px; font-size: 13px; color:#111827; }
-    input, select, textarea{
-      width:100%; box-sizing:border-box;
-      margin-top:6px; padding:10px;
-      border:1px solid #d1d5db; border-radius: 12px;
-      font-size: 14px;
-    }
-    textarea{ min-height: 70px; resize: vertical; }
-    .small{ font-size: 12px; color:#6b7280; margin-top:6px; }
-
-    .modal-actions{
-      display:flex; justify-content:flex-end; gap:10px;
-      margin-top: 14px;
-    }
-    .btn-ghost{ background:#f3f4f6; color:#111827; }
-    .btn-save{ background:#111827; color:#fff; }
   </style>
 </head>
 
@@ -86,30 +64,13 @@
 
   <div id="markerModal" class="modal">
     <div class="modal-content">
-      <h3 style="margin:0 0 6px 0;">Objektum rögzítése</h3>
-      <div class="small">Bökés helyén jön létre, utána húzással finomítható.</div>
-
-      <label>Cím (város, utca, házszám)</label>
-      <input id="fAddress" placeholder="pl. Oroszlány, Arany János utca 12">
-
-      <div class="row">
-        <div style="flex:1">
-          <label>Típus</label>
-          <select id="fType"></select>
-        </div>
-        <div style="flex:1">
-          <label>Állapot</label>
-          <select id="fStatus"></select>
-        </div>
-      </div>
-
-      <label>Megjegyzés (opcionális)</label>
-      <textarea id="fNotes" placeholder="pl. festés kopott, csavar hiányzik..."></textarea>
-
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="btnCancel">Mégse</button>
-        <button class="btn btn-save" id="btnSave">Mentés</button>
-      </div>
+      <h3>Objektum rögzítése</h3>
+      <input id="fAddress" placeholder="Cím">
+      <select id="fType"></select>
+      <select id="fStatus"></select>
+      <textarea id="fNotes"></textarea>
+      <button id="btnCancel">Mégse</button>
+      <button id="btnSave">Mentés</button>
     </div>
   </div>
 
@@ -118,4 +79,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-

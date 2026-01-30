@@ -1,4 +1,33 @@
-const APP_VERSION = "0.5.0";
+// CityMap
+// Verzió: ezt és a service-worker.js-ben lévő CACHE_VERSION-t együtt növeld.
+const APP_VERSION = "5.1";
+
+// Ha valami elszáll, legalább legyen látható (ne "néma" fehér oldal).
+window.addEventListener("error", (e) => {
+  try {
+    const msg = (e && (e.message || (e.error && e.error.message)))
+      ? (e.message || (e.error && e.error.message))
+      : "Ismeretlen hiba";
+    console.error("CityMap error:", e);
+    const hint = document.getElementById("hint");
+    if (hint) {
+      hint.textContent = `Hiba: ${msg}`;
+      hint.style.display = "block";
+    }
+  } catch (_) {}
+});
+
+window.addEventListener("unhandledrejection", (e) => {
+  try {
+    console.error("CityMap unhandledrejection:", e);
+    const msg = (e && e.reason && (e.reason.message || String(e.reason))) ? (e.reason.message || String(e.reason)) : "Ismeretlen hiba";
+    const hint = document.getElementById("hint");
+    if (hint) {
+      hint.textContent = `Hiba: ${msg}`;
+      hint.style.display = "block";
+    }
+  } catch (_) {}
+});
 
 let map;
 let addMode = false;
@@ -334,59 +363,73 @@ function registerSW() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  document.getElementById("appVersion").textContent = "v" + APP_VERSION;
-  registerSW();
+  const on = (id, ev, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(ev, fn);
+  };
 
-  map = L.map("map");
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
+  try {
+    const vEl = document.getElementById("appVersion");
+    if (vEl) vEl.textContent = "v" + APP_VERSION;
 
-  await DB.init();
-  await fillLookups();
+    registerSW();
 
-  document.getElementById("btnCancel").addEventListener("click", closeModal);
-  document.getElementById("btnSave").addEventListener("click", saveMarker);
+    if (!window.L) {
+      showHint("Hiba: a Leaflet nem töltődött be (L is undefined).", 8000);
+      return;
+    }
 
-  document.getElementById("btnAdd").addEventListener("click", () => {
-    addMode = true;
-    showHint("Bökj a térképre az objektum helyéhez.");
-  });
+    map = L.map("map");
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
 
-  document.getElementById("btnMyLoc").addEventListener("click", async () => {
-    const ok = await centerToMyLocation();
-    if (!ok) alert("Nem sikerült lekérni a pozíciót.");
-  });
+    await DB.init();
+    await fillLookups();
 
-  document.getElementById("btnClear").addEventListener("click", async () => {
-    if (!confirm("Biztosan törlöd az összes markert?")) return;
-    await DB.clearMarkers();
-    for (const mk of markerLayers.values()) map.removeLayer(mk);
-    markerLayers.clear();
-    markerData.clear();
-    refreshListAndFilters();
-  });
+    on("btnCancel", "click", closeModal);
+    on("btnSave", "click", saveMarker);
 
-  document.getElementById("btnList").addEventListener("click", () => {
+    on("btnAdd", "click", () => {
+      addMode = true;
+      showHint("Bökj a térképre az objektum helyéhez.");
+    });
+
+    on("btnMyLoc", "click", async () => {
+      const ok = await centerToMyLocation();
+      if (!ok) alert("Nem sikerült lekérni a pozíciót.");
+    });
+
+    on("btnClear", "click", async () => {
+      if (!confirm("Biztosan törlöd az összes markert?")) return;
+      await DB.clearMarkers();
+      for (const mk of markerLayers.values()) map.removeLayer(mk);
+      markerLayers.clear();
+      markerData.clear();
+      refreshListAndFilters();
+    });
+
+    on("btnList", "click", () => {
       const sp = document.getElementById("sidePanel");
+      if (!sp) return;
       sp.style.display = (sp.style.display === "flex") ? "none" : "flex";
       refreshListAndFilters();
     });
-  
-    document.getElementById("btnSpClose").addEventListener("click", () => {
-      document.getElementById("sidePanel").style.display = "none";
+
+    on("btnSpClose", "click", () => {
+      const sp = document.getElementById("sidePanel");
+      if (sp) sp.style.display = "none";
     });
-  
-    document.getElementById("fltType").addEventListener("change", refreshListAndFilters);
-    document.getElementById("fltStatus").addEventListener("change", refreshListAndFilters);
-    document.getElementById("txtSearch").addEventListener("input", () => {
-      // kis debounce
+
+    on("fltType", "change", refreshListAndFilters);
+    on("fltStatus", "change", refreshListAndFilters);
+    on("txtSearch", "input", () => {
       clearTimeout(refreshListAndFilters._t);
       refreshListAndFilters._t = setTimeout(refreshListAndFilters, 120);
     });
-  
-    document.getElementById("btnExport").addEventListener("click", async () => {
+
+    on("btnExport", "click", async () => {
       const all = await DB.getAllMarkers();
       const payload = {
         app: "CityMap",
@@ -404,28 +447,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       a.remove();
       URL.revokeObjectURL(url);
     });
-  
-    document.getElementById("btnImport").addEventListener("click", () => {
-      document.getElementById("fileImport").click();
+
+    on("btnImport", "click", () => {
+      const fi = document.getElementById("fileImport");
+      if (fi) fi.click();
     });
-  
-    document.getElementById("fileImport").addEventListener("change", async (e) => {
+
+    on("fileImport", "change", async (e) => {
       const file = e.target.files && e.target.files[0];
       e.target.value = "";
       if (!file) return;
-  
+
       try {
         const txt = await file.text();
         const data = JSON.parse(txt);
-        const markers = Array.isArray(data?.markers) ? data.markers : [];
+        const markers = Array.isArray(data && data.markers) ? data.markers : [];
         if (markers.length === 0) {
           alert("Nincs marker a fájlban.");
           return;
         }
-  
         if (!confirm(`Importálás: ${markers.length} marker. Folytassam?`)) return;
-  
-        // egyszerű stratégia: hozzáadjuk új id-kkel (duplikációt nem kezelünk most)
+
         for (const m of markers) {
           const copy = { ...m };
           delete copy.id;
@@ -433,22 +475,25 @@ document.addEventListener("DOMContentLoaded", async () => {
           copy.id = id;
           addMarkerToMap(copy);
         }
-  
         refreshListAndFilters();
         alert("Import kész.");
       } catch (err) {
         alert("Import hiba: nem sikerült beolvasni a JSON-t.");
       }
     });
-  
-  map.on("click", (e) => {
-    if (!addMode) return;
-    addMode = false;
-    openModal(e.latlng);
-  });
 
-  const ok = await centerToMyLocation();
-  if (!ok) map.setView([47.4979, 19.0402], 15);
+    map.on("click", (e) => {
+      if (!addMode) return;
+      addMode = false;
+      openModal(e.latlng);
+    });
 
-  await loadMarkers();
+    const ok = await centerToMyLocation();
+    if (!ok) map.setView([47.4979, 19.0402], 15);
+
+    await loadMarkers();
+  } catch (err) {
+    console.error("CityMap init error:", err);
+    showHint("Indítási hiba: " + (err && err.message ? err.message : String(err)), 8000);
+  }
 });

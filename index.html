@@ -4,6 +4,9 @@
   <meta charset="utf-8"/>
   <title>CityMap</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
@@ -11,7 +14,7 @@
     html, body, #map { height: 100%; margin: 0; }
 
     .toolbar{
-      position:absolute; top:10px; left:10px; z-index:1000;
+      position:absolute; top:10px; left:60px; z-index:2000;
       background: rgba(255,255,255,.92);
       padding: 8px; border-radius: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,.18);
@@ -89,8 +92,14 @@
       <h3 style="margin:0 0 6px 0;">Objektum rögzítése</h3>
       <div class="small">Bökés helyén jön létre, utána húzással finomítható.</div>
 
-      <label>Cím (város, utca, házszám)</label>
-      <input id="fAddress" placeholder="pl. Oroszlány, Arany János utca 12">
+      <label>Város</label>
+      <input id="fCity" placeholder="pl. Oroszlány">
+
+      <label>Közterület név, típus</label>
+      <input id="fStreet" placeholder="pl. Arany János utca">
+
+      <label>Házszám</label>
+      <input id="fHouse" placeholder="pl. 12">
 
       <div class="row">
         <div style="flex:1">

@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.4";
+const APP_VERSION = "0.4.5";
 
 let map;
 let addMode = false;
@@ -25,8 +25,26 @@ function showHint(text, ms = 2500) {
 
 function openModal(latlng) {
   pendingLatLng = latlng;
-  document.getElementById("fAddress").value = "";
+  document.getElementById("fCity").value = "";
+  document.getElementById("fStreet").value = "";
+  document.getElementById("fHouse").value = "";
   document.getElementById("fNotes").value = "";
+
+  // reverse geocode
+  fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`)
+    .then(r => r.json())
+    .then(j => {
+      const a = j.address || {};
+      if (a.city || a.town || a.village)
+        document.getElementById("fCity").value = a.city || a.town || a.village || "";
+      if (a.road)
+        document.getElementById("fStreet").value =
+          a.road + (a.road_type ? " " + a.road_type : "");
+      if (a.house_number)
+        document.getElementById("fHouse").value = a.house_number;
+    })
+    .catch(() => {});
+
   document.getElementById("markerModal").style.display = "flex";
 }
 
@@ -164,9 +182,13 @@ async function fillLookups() {
 async function saveMarker() {
   if (!pendingLatLng) return;
 
-  const address = document.getElementById("fAddress").value.trim();
+  const city = document.getElementById("fCity").value.trim();
+  const street = document.getElementById("fStreet").value.trim();
+  const house = document.getElementById("fHouse").value.trim();
+
+  const address = [city, street, house].filter(Boolean).join(", ");
   if (!address) {
-    alert("A cím megadása kötelező (város, utca, házszám).");
+    alert("A cím megadása kötelező (város / közterület / házszám).");
     return;
   }
 

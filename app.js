@@ -4,41 +4,7 @@ let map;
 let addMode = false;
 let pendingLatLng = null;
 
-const markerLayers = new Map();
-
-const TYPE_DEFS = {
-  PAD:   { shape: "circle",   color: "#16a34a" },
-  ZEBRA: { shape: "square",   color: "#facc15" },
-  TABLA: { shape: "triangle", color: "#2563eb" }
-};
-
-
-function markerRadiusForZoom(z) {
-  if (z <= 14) return 6;
-  if (z <= 16) return 8;
-  if (z <= 18) return 10;
-  return 12;
-}
-
-function svgPathForShape(shape, r) {
-  if (shape === "square") {
-    return `M ${-r} ${-r} L ${r} ${-r} L ${r} ${r} L ${-r} ${r} Z`;
-  }
-  if (shape === "triangle") {
-    return `M 0 ${-r} L ${r} ${r} L ${-r} ${r} Z`;
-  }
-  return null;
-}
-
-const DEFAULT_TYPE_DEF = {
-  shape: "circle",
-  color: "#6b7280"
-};
-
-function getTypeDef(typeId) {
-  return TYPE_DEFS[typeId] || DEFAULT_TYPE_DEF;
-}
- // dbId -> leaflet marker
+const markerLayers = new Map(); // dbId -> leaflet marker
 
 function escapeHtml(s) {
   return String(s || "")
@@ -138,18 +104,16 @@ function idText(id) {
 function popupHtml(m) {
   return `
   <div style="min-width:220px">
-    <div><b>Azonosítószám:</b> ${idText(m.id)}</div>
-    <div><b>Cím:</b> ${escapeHtml(m.address)}</div>
-    <div><b>Típus:</b> ${escapeHtml(m.typeLabel)}</div>
-    <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
-    <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
-
-    <div style="margin-top:10px;display:flex;justify-content:flex-end">
+    <div>Azonosító: <b>${idText(m.id)}</b></div>
+    <div style="margin-top:4px"><b>${escapeHtml(m.typeLabel)}</b></div>
+    <div>${escapeHtml(m.address)}</div>
+    <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
+    ${m.notes ? `<div style="margin-top:6px"><i>${escapeHtml(m.notes)}</i></div>` : ""}
+    <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
       <button data-del="${m.id}">Törlés</button>
     </div>
   </div>`;
 }
-
 
 function wirePopupDelete(marker, dbId) {
   marker.on("popupopen", (e) => {
@@ -175,47 +139,20 @@ function addMarkerToMap(m) {
   const def = getTypeDef(m.type);
   const z = map.getZoom();
   const r = markerRadiusForZoom(z);
-  const color = def.color;
+  const style = styleForType(m.type);
 
-  let layer;
-
-  if (def.shape === "circle") {
-    layer = L.circleMarker([m.lat, m.lng], {
-      radius: r,
-      color,
-      fillColor: color,
-      fillOpacity: 0.9,
-      weight: 2
-    });
-  } else {
-    const path = svgPathForShape(def.shape, r);
-    layer = L.path({
-      d: path,
-      fill: true,
-      fillColor: color,
-      color,
-      weight: 2
-    }).setLatLng([m.lat, m.lng]);
-  }
-
-  layer.addTo(map);
-  layer.bindPopup(popupHtml(m));
-  wirePopupDelete(layer, m.id);
-
-  markerLayers.set(m.id, layer);
-}
-
-
-  layer.addTo(map);
-  layer.bindPopup(popupHtml(m));
-  wirePopupDelete(layer, m.id);
-
-  layer.on("dragend", async () => {
-    const p = layer.getLatLng ? layer.getLatLng() : layer.getBounds().getCenter();
-    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng });
-    const updated = await getMarker(m.id);
-    if (updated) layer.setPopupContent(popupHtml(updated));
+  const layer = L.circleMarker([m.lat, m.lng], {
+    radius: r,
+    color: def.color,
+    fillColor: def.color,
+    fillOpacity: 0.9,
+    weight: style.weight,
+    dashArray: style.dashArray || null
   });
+
+  layer.addTo(map);
+  layer.bindPopup(popupHtml(m));
+  wirePopupDelete(layer, m.id);
 
   markerLayers.set(m.id, layer);
 }
@@ -371,10 +308,10 @@ async function checkForUpdateOnline() {
 }
 
 
-map.on("zoomend", async () => {
-  for (const [id, layer] of markerLayers) {
-    map.removeLayer(layer);
-    const m = await getMarker(id);
-    if (m) addMarkerToMap(m);
+map.on("zoomend", () => {
+  const z = map.getZoom();
+  const r = markerRadiusForZoom(z);
+  for (const layer of markerLayers.values()) {
+    if (layer.setRadius) layer.setRadius(r);
   }
 });

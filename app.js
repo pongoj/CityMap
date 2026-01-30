@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.7";
+const APP_VERSION = "0.4.6";
 
 let map;
 let addMode = false;
@@ -102,23 +102,13 @@ function idText(id) {
 }
 
 function popupHtml(m) {
-  // megjelenítés: házszám előtt ne legyen vessző (pl. "utca, 80" -> "utca 80")
-  const addr = escapeHtml(m.address || "").replace(/,\s*(\d+)/, " $1");
-
   return `
-  <div style="min-width:240px">
-    <div><b>Azonosítószám:</b> ${idText(m.id)}</div>
-    <div><b>Cím:</b> ${addr}</div>
-    <div><b>Típus:</b> ${escapeHtml(m.typeLabel)}</div>
-    <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
-    <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
-
-    <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
-      <button data-del="${m.id}">Törlés</button>
-    </div>
-  </div>`;
-}
-
+  <div style="min-width:220px">
+    <div>Azonosító: <b>${idText(m.id)}</b></div>
+    <div style="margin-top:4px"><b>${escapeHtml(m.typeLabel)}</b></div>
+    <div>${escapeHtml(m.address)}</div>
+    <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
+    ${m.notes ? `<div style="margin-top:6px"><i>${escapeHtml(m.notes)}</i></div>` : ""}
     <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
       <button data-del="${m.id}">Törlés</button>
     </div>

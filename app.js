@@ -1,4 +1,4 @@
-const APP_VERSION = "0.4.7";
+const APP_VERSION = "0.4.7.1";
 
 let map;
 let addMode = false;
@@ -15,6 +15,16 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function popupHtml(m) {
+  return `
+  <div style="min-width:220px">
+    <div>Azonosító: <b>${idText(m.id)}</b></div>
+    <div style="margin-top:4px"><b>${escapeHtml(m.typeLabel)}</b></div>
+    <div>${escapeHtml(m.address)}</div>
+    <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
+    ${m.notes ? `<div style="margin-top:6px"><i>${escapeHtml(m.notes)}</i></div>` : ""}
+
+
 function showHint(text, ms = 2500) {
   const el = document.getElementById("hint");
   el.textContent = text;
@@ -25,26 +35,8 @@ function showHint(text, ms = 2500) {
 
 function openModal(latlng) {
   pendingLatLng = latlng;
-  document.getElementById("fCity").value = "";
-  document.getElementById("fStreet").value = "";
-  document.getElementById("fHouse").value = "";
+  document.getElementById("fAddress").value = "";
   document.getElementById("fNotes").value = "";
-
-  // reverse geocode
-  fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`)
-    .then(r => r.json())
-    .then(j => {
-      const a = j.address || {};
-      if (a.city || a.town || a.village)
-        document.getElementById("fCity").value = a.city || a.town || a.village || "";
-      if (a.road)
-        document.getElementById("fStreet").value =
-          a.road + (a.road_type ? " " + a.road_type : "");
-      if (a.house_number)
-        document.getElementById("fHouse").value = a.house_number;
-    })
-    .catch(() => {});
-
   document.getElementById("markerModal").style.display = "flex";
 }
 
@@ -53,42 +45,11 @@ function closeModal() {
   pendingLatLng = null;
 }
 
-let myLocationMarker = null;
-
 async function centerToMyLocation() {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const ll = [lat, lng];
-
-        map.setView(ll, 20);
-
-        if (myLocationMarker) {
-          map.removeLayer(myLocationMarker);
-        }
-
-        let addressText = "Saját hely";
-        try {
-          const r = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-          );
-          const j = await r.json();
-          if (j.display_name) addressText = j.display_name;
-        } catch (e) {}
-
-        myLocationMarker = L.circleMarker(ll, {
-          radius: 8,
-          color: "#2563eb",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.9
-        }).addTo(map);
-
-        myLocationMarker.bindPopup(
-          `<b>Saját hely</b><br>${addressText}`
-        );
-
+      (pos) => {
+        map.setView([pos.coords.latitude, pos.coords.longitude], 20);
         resolve(true);
       },
       () => resolve(false),
@@ -101,27 +62,6 @@ function idText(id) {
   return "M-" + String(id).padStart(6, "0");
 }
 
-function popupHtml(m) {
-  // address cleanup: remove comma before house number
-  const addr = escapeHtml(m.address || "").replace(/,\s*(\d+)/, " $1");
-
-  return `
-  <div style="min-width:220px">
-    <div><b>Azonosítószám:</b> ${idText(m.id)}</div>
-    <div><b>Cím:</b> ${addr}</div>
-    <div><b>Típus:</b> ${escapeHtml(m.typeLabel)}</div>
-    <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
-    <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
-
-    <div style="margin-top:10px;display:flex;justify-content:flex-end">
-      <button data-del="${m.id}">Törlés</button>
-    </div>
-  </div>`;
-}</b></div>
-    <div style="margin-top:4px"><b>${escapeHtml(m.typeLabel)}</b></div>
-    <div>${escapeHtml(m.address)}</div>
-    <div>Állapot: ${escapeHtml(m.statusLabel)}</div>
-    ${m.notes ? `<div style="margin-top:6px"><i>${escapeHtml(m.notes)}</i></div>` : ""}
     <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">
       <button data-del="${m.id}">Törlés</button>
     </div>
@@ -195,13 +135,9 @@ async function fillLookups() {
 async function saveMarker() {
   if (!pendingLatLng) return;
 
-  const city = document.getElementById("fCity").value.trim();
-  const street = document.getElementById("fStreet").value.trim();
-  const house = document.getElementById("fHouse").value.trim();
-
-  const address = [city, street, house].filter(Boolean).join(", ");
+  const address = document.getElementById("fAddress").value.trim();
   if (!address) {
-    alert("A cím megadása kötelező (város / közterület / házszám).");
+    alert("A cím megadása kötelező (város, utca, házszám).");
     return;
   }
 
@@ -229,35 +165,12 @@ async function saveMarker() {
 
 function registerSW() {
   if (!("serviceWorker" in navigator)) return;
-
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (window.__cmReloaded) return;
-    window.__cmReloaded = true;
-    location.reload();
-  });
-
-  navigator.serviceWorker.register("./service-worker.js").then((reg) => {
-    if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-
-    reg.addEventListener("updatefound", () => {
-      const w = reg.installing;
-      if (!w) return;
-      w.addEventListener("statechange", () => {
-        if (w.state === "installed" && navigator.serviceWorker.controller) {
-          w.postMessage({ type: "SKIP_WAITING" });
-        }
-      });
-    });
-
-    reg.update().catch(() => {});
-  }).catch(() => {});
+  navigator.serviceWorker.register("./service-worker.js").catch(() => {});
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  window.addEventListener("online", checkForUpdateOnline);
   document.getElementById("appVersion").textContent = "v" + APP_VERSION;
   registerSW();
-  checkForUpdateOnline();
 
   map = L.map("map");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -289,6 +202,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   map.on("click", (e) => {
+    if (!addMode) return;
     addMode = false;
     openModal(e.latlng);
   });
@@ -298,17 +212,3 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await loadMarkers();
 });
-
-
-async function checkForUpdateOnline() {
-  if (!navigator.onLine) return;
-
-  try {
-    const r = await fetch("./app.js", { cache: "no-store" });
-    const t = await r.text();
-    const m = t.match(/const\s+APP_VERSION\s*=\s*"([^"]+)"/);
-    if (m && m[1] !== APP_VERSION) {
-      location.reload();
-    }
-  } catch (e) {}
-}

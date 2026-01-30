@@ -18,11 +18,9 @@ function iconForType(type) {
   const c = TYPE_ICON[type] || TYPE_ICON.DEFAULT;
   return new L.Icon({
     iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${c}.png`,
-    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
     iconSize: [25, 41],
     iconAnchor: [12, 41],
     popupAnchor: [1, -34],
-    shadowSize: [41, 41]
   });
 }
  // dbId -> leaflet marker
@@ -352,11 +350,9 @@ function resizedIconForType(type, zoom) {
 
   return new L.Icon({
     iconUrl: base.options.iconUrl,
-    shadowUrl: base.options.shadowUrl,
     iconSize: size,
     iconAnchor: anchor,
     popupAnchor: popup,
-    shadowSize: base.options.shadowSize
   });
 }
 

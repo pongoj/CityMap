@@ -1,53 +1,33 @@
-let map;
-let tempLatLng=null;
+import { openDB } from "./db.js";
 
-document.addEventListener('DOMContentLoaded', async()=>{
- map=L.map('map').setView([47.5,19.0],15);
- L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const map = L.map("map");
 
- map.on('click',e=>openDialog(e.latlng));
- btnAdd.onclick=()=>alert('Kattints a térképre');
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap"
+}).addTo(map);
 
- btnCancel.onclick=closeDialog;
- btnSave.onclick=saveMarker;
-
- await DB.init();
- loadMarkers();
+openDB().then(() => {
+  console.log("Adatbázis megnyitva");
 });
 
-function openDialog(latlng){
- tempLatLng=latlng;
- markerModal.style.display='flex';
-}
+navigator.geolocation.getCurrentPosition(async pos => {
+  const lat = pos.coords.latitude;
+  const lon = pos.coords.longitude;
 
-function closeDialog(){
- markerModal.style.display='none';
- tempLatLng=null;
-}
+  map.setView([lat, lon], 17);
+  const marker = L.marker([lat, lon]).addTo(map);
 
-async function saveMarker(){
- const data={
-  address:fAddress.value,
-  type:fType.value,
-  state:fState.value,
-  lat:tempLatLng.lat,
-  lng:tempLatLng.lng
- };
- const id=await DB.addMarker(data);
- addMarker({...data,id});
- closeDialog();
-}
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`
+  );
+  const data = await res.json();
 
-function addMarker(m){
- const mk=L.marker([m.lat,m.lng],{draggable:true}).addTo(map);
- mk.bindPopup(`<b>${m.type}</b><br>${m.address}<br>${m.state}`);
- mk.on('dragend',e=>{
-  const p=e.target.getLatLng();
-  DB.updateMarker(m.id,{lat:p.lat,lng:p.lng});
- });
-}
+  const a = data.address || {};
+  const city = a.city || a.town || a.village || "";
+  const road = a.road || "";
+  const house = a.house_number || "";
 
-async function loadMarkers(){
- const all=await DB.getAllMarkers();
- all.forEach(addMarker);
-}
+  const text = `${city}, ${road} ${house}`.trim();
+  marker.bindPopup(text).openPopup();
+});

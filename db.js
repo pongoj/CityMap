@@ -1,35 +1,35 @@
-const DB={
- db:null,
- init(){
-  return new Promise((res,rej)=>{
-   const r=indexedDB.open('citymap',1);
-   r.onupgradeneeded=e=>{
-    e.target.result.createObjectStore('markers',{keyPath:'id',autoIncrement:true});
-   };
-   r.onsuccess=e=>{this.db=e.target.result;res();};
-   r.onerror=rej;
+const DB_NAME = "citymap-db";
+const DB_VERSION = 1;
+
+let db = null;
+
+export function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = event => {
+      const db = event.target.result;
+
+      if (!db.objectStoreNames.contains("markers")) {
+        const store = db.createObjectStore("markers", { keyPath: "id" });
+        store.createIndex("by_type", "type", { unique: false });
+        store.createIndex("by_status", "status", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains("lookups")) {
+        db.createObjectStore("lookups", { keyPath: "key" });
+      }
+
+      if (!db.objectStoreNames.contains("users")) {
+        db.createObjectStore("users", { keyPath: "username" });
+      }
+    };
+
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+
+    request.onerror = () => reject(request.error);
   });
- },
- addMarker(d){
-  return new Promise(res=>{
-   const tx=this.db.transaction('markers','readwrite');
-   const s=tx.objectStore('markers');
-   const r=s.add(d);
-   r.onsuccess=()=>res(r.result);
-  });
- },
- getAllMarkers(){
-  return new Promise(res=>{
-   const tx=this.db.transaction('markers','readonly');
-   const s=tx.objectStore('markers');
-   const r=s.getAll();
-   r.onsuccess=()=>res(r.result);
-  });
- },
- updateMarker(id,data){
-  const tx=this.db.transaction('markers','readwrite');
-  const s=tx.objectStore('markers');
-  const r=s.get(id);
-  r.onsuccess=()=>s.put({...r.result,...data});
- }
-};
+}

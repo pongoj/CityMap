@@ -124,11 +124,46 @@
     </div>
   </div>
 
+  
   <div id="filterModal" class="modal">
     <div class="modal-content">
-      <h3 style="margin:0;">Szűrés</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0;">Szűrés</h3>
+        <button id="filterClose" class="btn btn-ghost">✕</button>
+      </div>
+
+      <label>Cím</label>
+      <input id="filterAddress" placeholder="Cím részlet">
+
+      <div class="row">
+        <div style="flex:1">
+          <label>Típus</label>
+          <select id="filterType">
+            <option value="">Összes</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label>Állapot</label>
+          <select id="filterStatus">
+            <option value="">Összes</option>
+          </select>
+        </div>
+      </div>
+
+      <table style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr>
+            <th style="text-align:left;border-bottom:1px solid #ddd">ID</th>
+            <th style="text-align:left;border-bottom:1px solid #ddd">Cím</th>
+            <th style="text-align:left;border-bottom:1px solid #ddd">Típus</th>
+            <th style="text-align:left;border-bottom:1px solid #ddd">Állapot</th>
+          </tr>
+        </thead>
+        <tbody id="filterTable"></tbody>
+      </table>
     </div>
   </div>
+
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="db.js"></script>

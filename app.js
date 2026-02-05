@@ -1,4 +1,4 @@
-const APP_VERSION = "5.4";
+const APP_VERSION = "5.5";
 
 let map;
 let addMode = false;
@@ -387,4 +387,59 @@ document.addEventListener("DOMContentLoaded", () => {
       if (m) m.style.display = "flex";
     });
   }
+});
+
+async function openFilter() {
+  const modal = document.getElementById("filterModal");
+  modal.style.display = "flex";
+
+  const all = await DB.getAllMarkers();
+  const types = await DB.getLookup("markerTypes") || [];
+  const statuses = await DB.getLookup("markerStatus") || [];
+
+  const typeSel = document.getElementById("filterType");
+  const statusSel = document.getElementById("filterStatus");
+
+  typeSel.innerHTML = '<option value="">Összes</option>';
+  types.forEach(t => typeSel.innerHTML += `<option value="${t.code}">${t.label}</option>`);
+
+  statusSel.innerHTML = '<option value="">Összes</option>';
+  statuses.forEach(s => statusSel.innerHTML += `<option value="${s.code}">${s.label}</option>`);
+
+  function render(list) {
+    const tb = document.getElementById("filterTable");
+    tb.innerHTML = "";
+    list.forEach(m => {
+      tb.innerHTML += `<tr>
+        <td>${idText(m.id)}</td>
+        <td>${escapeHtml(m.address)}</td>
+        <td>${escapeHtml(m.typeLabel)}</td>
+        <td>${escapeHtml(m.statusLabel)}</td>
+      </tr>`;
+    });
+  }
+
+  function applyFilter() {
+    const a = document.getElementById("filterAddress").value.toLowerCase();
+    const t = typeSel.value;
+    const s = statusSel.value;
+
+    render(all.filter(m =>
+      (!a || m.address.toLowerCase().includes(a)) &&
+      (!t || m.type === t) &&
+      (!s || m.status === s)
+    ));
+  }
+
+  document.getElementById("filterAddress").oninput = applyFilter;
+  typeSel.onchange = applyFilter;
+  statusSel.onchange = applyFilter;
+
+  render(all);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btnFilter").onclick = openFilter;
+  document.getElementById("filterClose").onclick = () =>
+    document.getElementById("filterModal").style.display = "none";
 });

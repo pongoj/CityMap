@@ -1,4 +1,4 @@
-const APP_VERSION = "5.5.1";
+const APP_VERSION = "5.5.2";
 
 let map;
 let addMode = false;
@@ -301,14 +301,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!ok) map.setView([47.4979, 19.0402], 15);
 
   await loadMarkers();
-  
+
+  // zoom esemény – STABIL helyen (v5.5.2)
   map.on("zoomend", () => {
-  const z = map.getZoom();
-  markerLayers.forEach((mk, id) => {
-    const data = mk.__data;
-    if (!data) return;
-    mk.setIcon(resizedIconForType(data.type, z));
+    const z = map.getZoom();
+    markerLayers.forEach((mk) => {
+      const data = mk.__data;
+      if (!data) return;
+      mk.setIcon(resizedIconForType(data.type, z));
+    });
+
+    if (myLocationMarker) {
+      myLocationMarker.setIcon(userIconForZoom(z));
+    }
   });
+
+  
 });
 });
 
@@ -365,14 +373,6 @@ function userIconForZoom(zoom) {
   });
 }
 
-map.on("zoomend", () => {
-  const z = map.getZoom();
-  if (typeof markerLayers !== "undefined") {
-    markerLayers.forEach((mk) => {
-      const data = mk.__data;
-      if (!data) return;
-      mk.setIcon(resizedIconForType(data.type, z));
-    });
   }
   if (typeof myLocationMarker !== "undefined" && myLocationMarker) {
     myLocationMarker.setIcon(userIconForZoom(z));
@@ -380,6 +380,7 @@ map.on("zoomend", () => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("btnFilter");
   if (btn) {
     btn.addEventListener("click", () => {
       const m = document.getElementById("filterModal");
@@ -438,29 +439,7 @@ async function openFilter() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btnFilter").onclick = openFilter;
+  document.getElementById("filterClose").onclick = () =>
     document.getElementById("filterModal").style.display = "none";
-});
-
-/* ===== Filter modal handler (v5.5.1 fix) ===== */
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("btnFilter");
-  if (!btn) return;
-
-  btn.addEventListener("click", async () => {
-    const modal = document.getElementById("filterModal");
-    if (!modal) return;
-
-    modal.style.display = "flex";
-
-    const closeBtn = modal.querySelector("#filterClose");
-    if (closeBtn) {
-      closeBtn.addEventListener("click", () => {
-        modal.style.display = "none";
-      }, { once: true });
-    }
-
-    if (typeof openFilter === "function") {
-      await openFilter();
-    }
-  });
 });

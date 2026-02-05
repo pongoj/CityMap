@@ -1,155 +1,67 @@
 <!DOCTYPE html>
 <html lang="hu">
 <head>
-  <meta charset="utf-8"/>
-  <title>CityMap</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <meta charset="UTF-8">
+    <title>CityMap</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <style>
-    html, body, #map { height: 100%; margin: 0; }
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
-    .toolbar{
-      position:absolute; top:10px; left:60px; z-index:2000;
-      background: rgba(255,255,255,.92);
-      padding: 8px; border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.18);
-      display:flex; gap:8px; align-items:center;
-    }
-    .btn{
-      border:0; padding:10px 12px; border-radius:12px;
-      cursor:pointer; font-weight:700;
-    }
-    .btn-add{ background:#2c7be5; color:#fff; }
-    .btn-loc{ background:#16a34a; color:#fff; }
-    .btn-clear{ background:#ef4444; color:#fff; }
+    <style>
+        html, body { height: 100%; margin: 0; }
+        #map { height: 100%; }
 
-    #appVersion{
-      position:fixed; left:8px; bottom:8px; z-index:1200;
-      background: rgba(255,255,255,.86);
-      padding: 4px 10px; border-radius: 10px;
-      font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      box-shadow: 0 2px 8px rgba(0,0,0,.14);
-    }
-    #hint{
-      position:fixed; left:10px; top:60px; z-index:1200;
-      background: rgba(0,0,0,.65); color:#fff;
-      padding: 8px 10px; border-radius: 12px;
-      font: 13px system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      display:none;
-      max-width: calc(100vw - 20px);
-    }
+        .top-buttons {
+            position: absolute;
+            top: 10px;
+            left: 50px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
 
-    /* Modal */
-    .modal{
-      position:fixed; inset:0; z-index:2000;
-      background: rgba(0,0,0,.45);
-      display:none; align-items:center; justify-content:center;
-    }
-    .modal-content{
-      width: min(380px, calc(100vw - 24px));
-      background:#fff; border-radius: 16px; padding: 16px;
-      box-shadow: 0 12px 28px rgba(0,0,0,.25);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-    }
-    .row{ display:flex; gap:10px; }
-    label{ display:block; margin-top: 10px; font-size: 13px; color:#111827; }
-    input, select, textarea{
-      width:100%; box-sizing:border-box;
-      margin-top:6px; padding:10px;
-      border:1px solid #d1d5db; border-radius: 12px;
-      font-size: 14px;
-    }
-    textarea{ min-height: 70px; resize: vertical; }
-    .small{ font-size: 12px; color:#6b7280; margin-top:6px; }
+        .btn {
+            padding: 10px 16px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
 
-    .modal-actions{
-      display:flex; justify-content:flex-end; gap:10px;
-      margin-top: 14px;
-    }
-    .btn-ghost{ background:#f3f4f6; color:#111827; }
-    .btn-save{ background:#111827; color:#fff; }
-  
-.btn-filter{background:#f59e0b;color:#fff}
-#filterModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:2000}
-#filterModal .modal-content{background:#fff;margin:5% auto;padding:15px;max-width:800px;border-radius:8px}
-#filterTable{width:100%;border-collapse:collapse;margin-top:10px}
-#filterTable th,#filterTable td{border:1px solid #ccc;padding:4px 6px;font-size:13px}
-.filter-fields{display:flex;gap:10px;flex-wrap:wrap}
-</style>
+        .btn-add { background: #1e88e5; color: white; }
+        .btn-my  { background: #43a047; color: white; }
+        .btn-del { background: #e53935; color: white; }
+        .btn-filter { background: #6d4c41; color: white; }
 
+        .version {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background: rgba(255,255,255,0.9);
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+    </style>
 </head>
 
 <body>
-  <div class="toolbar">
-    <button class="btn btn-add" id="btnAdd">Objektum hozzáadása</button>
-    <button class="btn btn-loc" id="btnMyLoc">Saját helyem</button>
-    <button class="btn btn-clear" id="btnClear">Összes törlése</button>
-  </div>
 
-  <div id="map"></div>
-  <div id="appVersion">v0.0.0</div>
-  <div id="hint"></div>
-
-  <div id="markerModal" class="modal">
-    <div class="modal-content">
-      <h3 style="margin:0 0 6px 0;">Objektum rögzítése</h3>
-      <div class="small">Bökés helyén jön létre, utána húzással finomítható.</div>
-
-      <label>Város</label>
-      <input id="fCity" placeholder="pl. Oroszlány">
-
-      <label>Közterület név, típus</label>
-      <input id="fStreet" placeholder="pl. Arany János utca">
-
-      <label>Házszám</label>
-      <input id="fHouse" placeholder="pl. 12">
-
-      <div class="row">
-        <div style="flex:1">
-          <label>Típus</label>
-          <select id="fType"></select>
-        </div>
-        <div style="flex:1">
-          <label>Állapot</label>
-          <select id="fStatus"></select>
-        </div>
-      </div>
-
-      <label>Megjegyzés (opcionális)</label>
-      <textarea id="fNotes" placeholder="pl. festés kopott, csavar hiányzik..."></textarea>
-
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="btnCancel">Mégse</button>
-        <button class="btn btn-save" id="btnSave">Mentés</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="db.js"></script>
-  <script src="app.js"></script>
-
-<div id="filterModal" class="modal">
-  <div class="modal-content">
-    <h3>Szűrés</h3>
-    <div class="filter-fields">
-      <label>Cím <input id="filterAddress"></label>
-      <label>Típus <select id="filterType"><option value="">Összes</option></select></label>
-      <label>Állapot <select id="filterStatus"><option value="">Összes</option></select></label>
-    </div>
-    <table id="filterTable">
-      <thead><tr><th>ID</th><th>Cím</th><th>Típus</th><th>Állapot</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <button onclick="closeFilterModal()">Bezár</button>
-  </div>
+<div class="top-buttons">
+    <button class="btn btn-add" onclick="startAddMode()">Objektum hozzáadása</button>
+    <button class="btn btn-my" onclick="centerToMyLocation()">Saját helyem</button>
+    <button class="btn btn-del" onclick="deleteAll()">Összes törlése</button>
+    <button class="btn btn-filter" onclick="openFilter()">Szűrés</button>
 </div>
+
+<div id="map"></div>
+<div class="version">v5.3.1</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
 </body>
-
 </html>
-

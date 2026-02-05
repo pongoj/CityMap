@@ -1,4 +1,4 @@
-const APP_VERSION = "5.5.2";
+const APP_VERSION = "5.3";
 
 let map;
 let addMode = false;
@@ -301,22 +301,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!ok) map.setView([47.4979, 19.0402], 15);
 
   await loadMarkers();
-
-  // zoom esemény – STABIL helyen (v5.5.2)
-  map.on("zoomend", () => {
-    const z = map.getZoom();
-    markerLayers.forEach((mk) => {
-      const data = mk.__data;
-      if (!data) return;
-      mk.setIcon(resizedIconForType(data.type, z));
-    });
-
-    if (myLocationMarker) {
-      myLocationMarker.setIcon(userIconForZoom(z));
-    }
-  });
-
   
+  map.on("zoomend", () => {
+  const z = map.getZoom();
+  markerLayers.forEach((mk, id) => {
+    const data = mk.__data;
+    if (!data) return;
+    mk.setIcon(resizedIconForType(data.type, z));
+  });
 });
 });
 
@@ -373,73 +365,97 @@ function userIconForZoom(zoom) {
   });
 }
 
+map.on("zoomend", () => {
+  const z = map.getZoom();
+  if (typeof markerLayers !== "undefined") {
+    markerLayers.forEach((mk) => {
+      const data = mk.__data;
+      if (!data) return;
+      mk.setIcon(resizedIconForType(data.type, z));
+    });
   }
   if (typeof myLocationMarker !== "undefined" && myLocationMarker) {
     myLocationMarker.setIcon(userIconForZoom(z));
   }
 });
 
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("btnFilter");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      const m = document.getElementById("filterModal");
-      if (m) m.style.display = "flex";
-    });
-  }
-});
 
-async function openFilter() {
-  const modal = document.getElementById("filterModal");
-  modal.style.display = "flex";
+/* ===== Filter modal (v5.3) ===== */
+let _allMarkersCache = [];
 
-  const all = await DB.getAllMarkers();
+function openFilterModal() {
+  document.getElementById("filterModal").style.display = "flex";
+  document.getElementById("sfAddress").value = "";
+
+  DB.getAllMarkers().then(all => {
+    _allMarkersCache = all;
+    fillFilterCombos();
+    renderFilterList(all);
+  });
+}
+
+function closeFilterModal() {
+  document.getElementById("filterModal").style.display = "none";
+}
+
+async function fillFilterCombos() {
   const types = await DB.getLookup("markerTypes") || [];
   const statuses = await DB.getLookup("markerStatus") || [];
 
-  const typeSel = document.getElementById("filterType");
-  const statusSel = document.getElementById("filterStatus");
+  const t = document.getElementById("sfType");
+  const s = document.getElementById("sfStatus");
 
-  typeSel.innerHTML = '<option value="">Összes</option>';
-  types.forEach(t => typeSel.innerHTML += `<option value="${t.code}">${t.label}</option>`);
+  t.innerHTML = '<option value="">Összes</option>';
+  types.forEach(x => {
+    const o = document.createElement("option");
+    o.value = x.code;
+    o.textContent = x.label;
+    t.appendChild(o);
+  });
 
-  statusSel.innerHTML = '<option value="">Összes</option>';
-  statuses.forEach(s => statusSel.innerHTML += `<option value="${s.code}">${s.label}</option>`);
+  s.innerHTML = '<option value="">Összes</option>';
+  statuses.forEach(x => {
+    const o = document.createElement("option");
+    o.value = x.code;
+    o.textContent = x.label;
+    s.appendChild(o);
+  });
+}
 
-  function render(list) {
-    const tb = document.getElementById("filterTable");
-    tb.innerHTML = "";
-    list.forEach(m => {
-      tb.innerHTML += `<tr>
-        <td>${idText(m.id)}</td>
-        <td>${escapeHtml(m.address)}</td>
-        <td>${escapeHtml(m.typeLabel)}</td>
-        <td>${escapeHtml(m.statusLabel)}</td>
-      </tr>`;
-    });
-  }
+function renderFilterList(list) {
+  const tb = document.getElementById("sfList");
+  tb.innerHTML = "";
+  list.forEach(m => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${idText(m.id)}</td>
+      <td>${escapeHtml(m.address)}</td>
+      <td>${escapeHtml(m.typeLabel)}</td>
+      <td>${escapeHtml(m.statusLabel)}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
 
-  function applyFilter() {
-    const a = document.getElementById("filterAddress").value.toLowerCase();
-    const t = typeSel.value;
-    const s = statusSel.value;
+function applyFilter() {
+  const a = document.getElementById("sfAddress").value.toLowerCase();
+  const t = document.getElementById("sfType").value;
+  const s = document.getElementById("sfStatus").value;
 
-    render(all.filter(m =>
-      (!a || m.address.toLowerCase().includes(a)) &&
-      (!t || m.type === t) &&
-      (!s || m.status === s)
-    ));
-  }
+  const res = _allMarkersCache.filter(m =>
+    (!a || m.address.toLowerCase().includes(a)) &&
+    (!t || m.type === t) &&
+    (!s || m.status === s)
+  );
 
-  document.getElementById("filterAddress").oninput = applyFilter;
-  typeSel.onchange = applyFilter;
-  statusSel.onchange = applyFilter;
-
-  render(all);
+  renderFilterList(res);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("btnFilter").onclick = openFilter;
-  document.getElementById("filterClose").onclick = () =>
-    document.getElementById("filterModal").style.display = "none";
+  document.getElementById("btnFilter").addEventListener("click", openFilterModal);
+  document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
+
+  document.getElementById("sfAddress").addEventListener("input", applyFilter);
+  document.getElementById("sfType").addEventListener("change", applyFilter);
+  document.getElementById("sfStatus").addEventListener("change", applyFilter);
 });

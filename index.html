@@ -27,7 +27,7 @@
     .btn-add{ background:#2c7be5; color:#fff; }
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
-    .btn-filter{ background:#6b7280; color:#fff; }
+.btn-filter{ background:#6b7280; color:#fff; }
 
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
@@ -127,26 +127,19 @@
   
   <div id="filterModal" class="modal">
     <div class="modal-content">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <h3 style="margin:0;">Szűrés</h3>
-        <button id="filterClose" class="btn btn-ghost">✕</button>
-      </div>
+      <h3 style="margin:0 0 6px 0;">Szűrés</h3>
 
       <label>Cím</label>
-      <input id="filterAddress" placeholder="Cím részlet">
+      <input id="sfAddress" placeholder="Cím részlet">
 
       <div class="row">
         <div style="flex:1">
           <label>Típus</label>
-          <select id="filterType">
-            <option value="">Összes</option>
-          </select>
+          <select id="sfType"></select>
         </div>
         <div style="flex:1">
           <label>Állapot</label>
-          <select id="filterStatus">
-            <option value="">Összes</option>
-          </select>
+          <select id="sfStatus"></select>
         </div>
       </div>
 
@@ -159,11 +152,14 @@
             <th style="text-align:left;border-bottom:1px solid #ddd">Állapot</th>
           </tr>
         </thead>
-        <tbody id="filterTable"></tbody>
+        <tbody id="sfList"></tbody>
       </table>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>
+      </div>
     </div>
   </div>
-
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="db.js"></script>

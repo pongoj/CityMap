@@ -1,4 +1,4 @@
-const APP_VERSION = "5.2";
+const APP_VERSION = "5.3";
 
 let map;
 let addMode = false;
@@ -377,4 +377,61 @@ map.on("zoomend", () => {
   if (typeof myLocationMarker !== "undefined" && myLocationMarker) {
     myLocationMarker.setIcon(userIconForZoom(z));
   }
+});
+
+let allMarkersCache = [];
+
+async function openFilterModal() {
+  allMarkersCache = await DB.getAllMarkers();
+  populateFilterSelects(allMarkersCache);
+  renderFilterTable(allMarkersCache);
+  document.getElementById("filterModal").style.display = "block";
+}
+
+function closeFilterModal() {
+  document.getElementById("filterModal").style.display = "none";
+}
+
+function populateFilterSelects(markers) {
+  const typeSel = document.getElementById("filterType");
+  const statusSel = document.getElementById("filterStatus");
+
+  const types = [...new Set(markers.map(m => m.type).filter(Boolean))];
+  const states = [...new Set(markers.map(m => m.status).filter(Boolean))];
+
+  typeSel.innerHTML = '<option value="">Összes</option>' + types.map(t => `<option>${t}</option>`).join("");
+  statusSel.innerHTML = '<option value="">Összes</option>' + states.map(s => `<option>${s}</option>`).join("");
+}
+
+function renderFilterTable(markers) {
+  const tbody = document.querySelector("#filterTable tbody");
+  tbody.innerHTML = "";
+  markers.forEach(m => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${m.id}</td><td>${m.address}</td><td>${m.type}</td><td>${m.status}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function applyFilter() {
+  const addr = document.getElementById("filterAddress").value.toLowerCase();
+  const type = document.getElementById("filterType").value;
+  const status = document.getElementById("filterStatus").value;
+
+  const filtered = allMarkersCache.filter(m => {
+    if (addr && !m.address?.toLowerCase().includes(addr)) return false;
+    if (type && m.type !== type) return false;
+    if (status && m.status !== status) return false;
+    return true;
+  });
+
+  renderFilterTable(filtered);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btnFilter")?.addEventListener("click", openFilterModal);
+  ["filterAddress","filterType","filterStatus"].forEach(id=>{
+    document.getElementById(id)?.addEventListener("input",applyFilter);
+    document.getElementById(id)?.addEventListener("change",applyFilter);
+  });
 });

@@ -73,7 +73,15 @@
     }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
-  </style>
+  
+.btn-filter{background:#f59e0b;color:#fff}
+#filterModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:2000}
+#filterModal .modal-content{background:#fff;margin:5% auto;padding:15px;max-width:800px;border-radius:8px}
+#filterTable{width:100%;border-collapse:collapse;margin-top:10px}
+#filterTable th,#filterTable td{border:1px solid #ccc;padding:4px 6px;font-size:13px}
+.filter-fields{display:flex;gap:10px;flex-wrap:wrap}
+</style>
+
 </head>
 
 <body>
@@ -125,6 +133,23 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="db.js"></script>
   <script src="app.js"></script>
+
+<div id="filterModal" class="modal">
+  <div class="modal-content">
+    <h3>Szűrés</h3>
+    <div class="filter-fields">
+      <label>Cím <input id="filterAddress"></label>
+      <label>Típus <select id="filterType"><option value="">Összes</option></select></label>
+      <label>Állapot <select id="filterStatus"><option value="">Összes</option></select></label>
+    </div>
+    <table id="filterTable">
+      <thead><tr><th>ID</th><th>Cím</th><th>Típus</th><th>Állapot</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button onclick="closeFilterModal()">Bezár</button>
+  </div>
+</div>
 </body>
+
 </html>
 

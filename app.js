@@ -1,4 +1,4 @@
-const APP_VERSION = "5.3";
+const APP_VERSION = "5.3.1";
 
 let map;
 let addMode = false;
@@ -364,20 +364,6 @@ function userIconForZoom(zoom) {
     popupAnchor: [0, -size / 2]
   });
 }
-
-map.on("zoomend", () => {
-  const z = map.getZoom();
-  if (typeof markerLayers !== "undefined") {
-    markerLayers.forEach((mk) => {
-      const data = mk.__data;
-      if (!data) return;
-      mk.setIcon(resizedIconForType(data.type, z));
-    });
-  }
-  if (typeof myLocationMarker !== "undefined" && myLocationMarker) {
-    myLocationMarker.setIcon(userIconForZoom(z));
-  }
-});
 
 
 /* ===== Filter modal (v5.3) ===== */

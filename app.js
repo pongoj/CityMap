@@ -1,10 +1,16 @@
-const APP_VERSION = "5.3.1";
+const APP_VERSION = "5.4";
 
 let map;
 let addMode = false;
 let pendingLatLng = null;
 
 const markerLayers = new Map();
+
+function genUuid() {
+  if (crypto && crypto.randomUUID) return crypto.randomUUID();
+  return String(Date.now()) + "-" + String(Math.random()).replace(".", "");
+}
+
 
 const TYPE_ICON = {
   PAD: "green",
@@ -139,7 +145,7 @@ function wirePopupDelete(marker, dbId) {
     if (!btn) return;
 
     btn.addEventListener("click", async () => {
-      await DB.deleteMarker(dbId);
+      await DB.softDeleteMarker(dbId);
       map.removeLayer(marker);
       markerLayers.delete(dbId);
     });
@@ -147,7 +153,7 @@ function wirePopupDelete(marker, dbId) {
 }
 
 async function getMarker(id) {
-  const all = await DB.getAllMarkers();
+  const all = await DB.getAllMarkersActive();
   return all.find(x => x.id === id) || null;
 }
 
@@ -159,7 +165,7 @@ mk.__data = m;
 
   mk.on("dragend", async (e) => {
     const p = e.target.getLatLng();
-    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng });
+    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng, updatedAt: Date.now() });
 
     const updated = await getMarker(m.id);
     if (updated) mk.setPopupContent(popupHtml(updated));
@@ -169,7 +175,7 @@ mk.__data = m;
 }
 
 async function loadMarkers() {
-  const all = await DB.getAllMarkers();
+  const all = await DB.getAllMarkersActive();
   all.forEach(addMarkerToMap);
 }
 
@@ -221,7 +227,10 @@ async function saveMarker() {
     status: statusSel.value,
     statusLabel: statusSel.options[statusSel.selectedIndex]?.textContent || statusSel.value,
     notes: document.getElementById("fNotes").value.trim(),
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    deletedAt: null,
+    uuid: genUuid()
   };
 
   const id = await DB.addMarker(marker);
@@ -373,7 +382,7 @@ function openFilterModal() {
   document.getElementById("filterModal").style.display = "flex";
   document.getElementById("sfAddress").value = "";
 
-  DB.getAllMarkers().then(all => {
+  DB.getAllMarkersActive().then(all => {
     _allMarkersCache = all;
     fillFilterCombos();
     renderFilterList(all);

@@ -1,5 +1,5 @@
 const DB_NAME = "citymap-db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const DB = {
   _db: null,
@@ -12,15 +12,19 @@ const DB = {
 
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
-
         // Markerek
         if (!db.objectStoreNames.contains("markers")) {
           const s = db.createObjectStore("markers", { keyPath: "id", autoIncrement: true });
           s.createIndex("by_type", "type", { unique: false });
           s.createIndex("by_status", "status", { unique: false });
+          s.createIndex("by_uuid", "uuid", { unique: true });
+          s.createIndex("by_deletedAt", "deletedAt", { unique: false });
+        } else {
+          const s = e.target.transaction.objectStore("markers");
+          if (!s.indexNames.contains("by_uuid")) s.createIndex("by_uuid", "uuid", { unique: true });
+          if (!s.indexNames.contains("by_deletedAt")) s.createIndex("by_deletedAt", "deletedAt", { unique: false });
         }
-
-        // Combo értékek (később admin felületről bővíthető)
+// Combo értékek (később admin felületről bővíthető)
         if (!db.objectStoreNames.contains("lookups")) {
           db.createObjectStore("lookups", { keyPath: "key" });
         }
@@ -56,6 +60,21 @@ const DB = {
       ]);
     }
   },
+
+  async backfillMarkerMeta() {
+    const all = await this.getAllMarkers();
+    const now = Date.now();
+    for (const m of all) {
+      let changed = false;
+      const patch = {};
+      if (!m.uuid) { patch.uuid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(now) + "-" + String(Math.random()).replace(".", "")); changed = true; }
+      if (!m.createdAt) { patch.createdAt = now; changed = true; }
+      if (!m.updatedAt) { patch.updatedAt = m.createdAt || now; changed = true; }
+      if (typeof m.deletedAt === "undefined") { patch.deletedAt = null; changed = true; }
+      if (changed) await this.updateMarker(m.id, patch);
+    }
+  },
+
 
   _store(name, mode) {
     const tx = this._db.transaction(name, mode);
@@ -112,6 +131,29 @@ const DB = {
       r.onerror = () => reject(r.error);
     });
   },
+
+  // Csak az aktív (nem törölt) markerek
+  getAllMarkersActive() {
+    return this.getAllMarkers().then(list => (list || []).filter(m => !m.deletedAt));
+  },
+
+  // Soft delete (online sync-hoz barátságosabb)
+  softDeleteMarker(id) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("markers", "readwrite");
+      const g = s.get(id);
+      g.onsuccess = () => {
+        const cur = g.result;
+        if (!cur) return resolve(false);
+        const now = Date.now();
+        const put = s.put({ ...cur, deletedAt: now, updatedAt: now });
+        put.onsuccess = () => resolve(true);
+        put.onerror = () => reject(put.error);
+      };
+      g.onerror = () => reject(g.error);
+    });
+  },
+
 
   getLookup(key) {
     return new Promise((resolve, reject) => {

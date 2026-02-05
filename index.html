@@ -27,6 +27,7 @@
     .btn-add{ background:#2c7be5; color:#fff; }
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
+    .btn-filter{ background:#6b7280; color:#fff; }
 
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
@@ -44,7 +45,6 @@
       max-width: calc(100vw - 20px);
     }
 
-    /* Modal */
     .modal{
       position:fixed; inset:0; z-index:2000;
       background: rgba(0,0,0,.45);
@@ -56,85 +56,37 @@
       box-shadow: 0 12px 28px rgba(0,0,0,.25);
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
     }
-    .row{ display:flex; gap:10px; }
-    label{ display:block; margin-top: 10px; font-size: 13px; color:#111827; }
-    input, select, textarea{
-      width:100%; box-sizing:border-box;
-      margin-top:6px; padding:10px;
-      border:1px solid #d1d5db; border-radius: 12px;
-      font-size: 14px;
-    }
-    textarea{ min-height: 70px; resize: vertical; }
-    .small{ font-size: 12px; color:#6b7280; margin-top:6px; }
-
-    .modal-actions{
-      display:flex; justify-content:flex-end; gap:10px;
-      margin-top: 14px;
-    }
-    .btn-ghost{ background:#f3f4f6; color:#111827; }
-    .btn-save{ background:#111827; color:#fff; }
   </style>
 </head>
 
 <body>
   <div class="toolbar">
     <button class="btn btn-add" id="btnAdd">Objektum hozzáadása</button>
+    <button class="btn btn-filter" id="btnFilter">Szűrés</button>
     <button class="btn btn-loc" id="btnMyLoc">Saját helyem</button>
     <button class="btn btn-clear" id="btnClear">Összes törlése</button>
   </div>
 
-  <button class="btn" id="btnFilter" style="position:absolute;top:10px;right:10px;z-index:1200;">Szűrés</button>
-<div id="map"></div>
+  <div id="map"></div>
   <div id="appVersion">v0.0.0</div>
   <div id="hint"></div>
 
+  <!-- Marker modal (meglévő) -->
   <div id="markerModal" class="modal">
     <div class="modal-content">
-      <h3 style="margin:0 0 6px 0;">Objektum rögzítése</h3>
-      <div class="small">Bökés helyén jön létre, utána húzással finomítható.</div>
+      <h3>Objektum rögzítése</h3>
+    </div>
+  </div>
 
-      <label>Város</label>
-      <input id="fCity" placeholder="pl. Oroszlány">
-
-      <label>Közterület név, típus</label>
-      <input id="fStreet" placeholder="pl. Arany János utca">
-
-      <label>Házszám</label>
-      <input id="fHouse" placeholder="pl. 12">
-
-      <div class="row">
-        <div style="flex:1">
-          <label>Típus</label>
-          <select id="fType"></select>
-        </div>
-        <div style="flex:1">
-          <label>Állapot</label>
-          <select id="fStatus"></select>
-        </div>
-      </div>
-
-      <label>Megjegyzés (opcionális)</label>
-      <textarea id="fNotes" placeholder="pl. festés kopott, csavar hiányzik..."></textarea>
-
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="btnCancel">Mégse</button>
-        <button class="btn btn-save" id="btnSave">Mentés</button>
-      </div>
+  <!-- Filter modal (üres) -->
+  <div id="filterModal" class="modal">
+    <div class="modal-content">
+      <h3>Szűrés</h3>
     </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="db.js"></script>
   <script src="app.js"></script>
-
-<div id="filterModal" class="modal" style="display:none;">
-  <div class="modal-content">
-    <h3>Szűrés</h3>
-    <p>(Szűrési felület hamarosan)</p>
-    <button id="btnFilterClose">Bezár</button>
-  </div>
-</div>
 </body>
-
 </html>
-

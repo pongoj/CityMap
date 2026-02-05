@@ -1,4 +1,4 @@
-const APP_VERSION = "5.3.1";
+const APP_VERSION = "5.3";
 
 let map;
 let addMode = false;
@@ -97,12 +97,7 @@ async function centerToMyLocation() {
           if (j.display_name) addressText = j.display_name;
         } catch (e) {}
 
-        myLocationMarker = L.circleMarker(ll, {
-          radius: 8,
-          color: "#2563eb",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.9
-        }).addTo(map);
+        myLocationMarker = L.marker(ll, { icon: userIconForZoom(map.getZoom()) }).addTo(map);
 
         myLocationMarker.bindPopup(
           `<b>Saját hely</b><br>${addressText}`
@@ -359,21 +354,36 @@ function resizedIconForType(type, zoom) {
 
 
 
-// ===== Szűrés gomb – csak modal megnyitás (v5.3.1) =====
-document.addEventListener("DOMContentLoaded", () => {
-  const btnFilter = document.getElementById("btnFilter");
-  const filterModal = document.getElementById("filterModal");
-  const btnFilterClose = document.getElementById("btnFilterClose");
+function userIconForZoom(zoom) {
+  const scale = markerScaleForZoom(zoom);
+  const size = 28 * scale;
+  return L.icon({
+    iconUrl: "./icons/user.png",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size * 0.9],
+    popupAnchor: [0, -size / 2]
+  });
+}
 
-  if (btnFilter && filterModal) {
-    btnFilter.addEventListener("click", () => {
-      filterModal.style.display = "flex";
+map.on("zoomend", () => {
+  const z = map.getZoom();
+  if (typeof markerLayers !== "undefined") {
+    markerLayers.forEach((mk) => {
+      const data = mk.__data;
+      if (!data) return;
+      mk.setIcon(resizedIconForType(data.type, z));
     });
   }
+  if (typeof myLocationMarker !== "undefined" && myLocationMarker) {
+    myLocationMarker.setIcon(userIconForZoom(z));
+  }
+});
 
-  if (btnFilterClose && filterModal) {
-    btnFilterClose.addEventListener("click", () => {
-      filterModal.style.display = "none";
+document.addEventListener("DOMContentLoaded", () => {
+  const f = document.getElementById("btnFilter");
+  if (f) {
+    f.addEventListener("click", () => {
+      document.getElementById("filterModal").style.display = "flex";
     });
   }
 });

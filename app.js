@@ -1,4 +1,4 @@
-const APP_VERSION = "5.3";
+const APP_VERSION = "5.4";
 
 let map;
 let addMode = false;
@@ -380,10 +380,11 @@ map.on("zoomend", () => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
-  const f = document.getElementById("btnFilter");
-  if (f) {
-    f.addEventListener("click", () => {
-      document.getElementById("filterModal").style.display = "flex";
+  const btn = document.getElementById("btnFilter");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const m = document.getElementById("filterModal");
+      if (m) m.style.display = "flex";
     });
   }
 });

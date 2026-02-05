@@ -1,4 +1,4 @@
-const APP_VERSION = "5.5";
+const APP_VERSION = "5.5.1";
 
 let map;
 let addMode = false;
@@ -380,7 +380,6 @@ map.on("zoomend", () => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("btnFilter");
   if (btn) {
     btn.addEventListener("click", () => {
       const m = document.getElementById("filterModal");
@@ -439,7 +438,29 @@ async function openFilter() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("btnFilter").onclick = openFilter;
-  document.getElementById("filterClose").onclick = () =>
     document.getElementById("filterModal").style.display = "none";
+});
+
+/* ===== Filter modal handler (v5.5.1 fix) ===== */
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("btnFilter");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    const modal = document.getElementById("filterModal");
+    if (!modal) return;
+
+    modal.style.display = "flex";
+
+    const closeBtn = modal.querySelector("#filterClose");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        modal.style.display = "none";
+      }, { once: true });
+    }
+
+    if (typeof openFilter === "function") {
+      await openFilter();
+    }
+  });
 });

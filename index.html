@@ -28,40 +28,68 @@
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
-.table-scroll{ max-height: calc(100vh - 340px); overflow-y: auto; border-radius:12px; }
-.table-scroll thead th{ background: #fff; }
-.filter-table{ border:1px solid #ddd; border-collapse:collapse; }
-.filter-table th, .filter-table td{ border:1px solid #ddd; padding:6px 8px; }
-.filter-table tbody tr{ cursor: default; }
-.filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
 
-
-/* ===== Filter modal: csak a táblázat görgessen (v5.6.1) ===== */
-
-/* ===== Filter táblázat: fejléc fix, csak a lista görgessen (v5.6.2) ===== */
-#filterModal .filter-table-head{ margin-top: 12px; }
-#filterModal .filter-table-head table{ width:100%; border-collapse:collapse; font-size:13px; }
-#filterModal .filter-table-body{ width:100%; border-collapse:collapse; font-size:13px; }
-#filterModal .filter-table-head .filter-table{ border-bottom:0; }
-#filterModal .table-scroll{ margin-top:0; }
-#filterModal .table-scroll .filter-table{ border-top:0; }
-
+/* ===== Filter táblázat: 1 táblázat, fix fejléc, csak a tartalom görget ===== */
 #filterModal .modal-content{
   max-height: 90vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 #filterModal .table-scroll{
   flex: 1 1 auto;
-  min-height: 0; /* fontos: így nem "csúszik fel" a táblázat, csak itt lesz scroll */
+  min-height: 0;      /* fontos: flexben kell, hogy a belső görgetés működjön */
   margin-top: 12px;
-  max-height: none; /* a flex magasságát használjuk */
-  overflow-y: auto;
+  overflow: hidden;   /* a görgetés a tbody-n lesz */
+  border: 1px solid #ddd;
+  border-radius: 12px;
 }
 
+/* A táblázat fejléce külön "asztal", a tbody görgethető blokk */
+.filter-table{
+  width:100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+  height: 100%;
+}
+.filter-table thead{
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  background: #fff;
+}
+.filter-table tbody{
+  display: block;
+  height: calc(100% - 38px);
+  max-height: calc(100% - 38px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.filter-table tbody tr{
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  cursor: default;
+}
+.filter-table th, .filter-table td{
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  vertical-align: top;
+  word-break: break-word;
+}
+.filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
+
+/* oszlopszélességek (colgroup helyett, mert display:block-os tbody mellett stabilabb) */
+.filter-table th:nth-child(1), .filter-table td:nth-child(1){ width:22%; }
+.filter-table th:nth-child(2), .filter-table td:nth-child(2){ width:48%; }
+.filter-table th:nth-child(3), .filter-table td:nth-child(3){ width:15%; }
+.filter-table th:nth-child(4), .filter-table td:nth-child(4){ width:15%; }
+
+/* ===== /Filter táblázat ===== */
 
 
-    #appVersion{
+#appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
       background: rgba(255,255,255,.86);
       padding: 4px 10px; border-radius: 10px;
@@ -175,17 +203,10 @@
         </div>
       </div>
 
-      <div class="filter-table-head">
+      
+      <div class="table-scroll">
         <table class="filter-table">
-
-          <colgroup>
-            <col style="width:22%">
-            <col style="width:48%">
-            <col style="width:15%">
-            <col style="width:15%">
-          </colgroup>
-
-          <thead>
+<thead>
             <tr>
               <th style="text-align:left">ID</th>
               <th style="text-align:left">Cím</th>
@@ -193,19 +214,6 @@
               <th style="text-align:left">Állapot</th>
             </tr>
           </thead>
-        </table>
-      </div>
-
-      <div class="table-scroll">
-        <table class="filter-table filter-table-body">
-
-          <colgroup>
-            <col style="width:22%">
-            <col style="width:48%">
-            <col style="width:15%">
-            <col style="width:15%">
-          </colgroup>
-
           <tbody id="sfList"></tbody>
         </table>
       </div>

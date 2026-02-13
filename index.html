@@ -29,27 +29,11 @@
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
 .table-scroll{ max-height: calc(100vh - 340px); overflow-y: auto; border-radius:12px; }
-.table-scroll thead th{ position: sticky; top: 0; background: #fff; }
+.table-scroll thead th{ background: #fff; }
 .filter-table{ border:1px solid #ddd; border-collapse:collapse; }
 .filter-table th, .filter-table td{ border:1px solid #ddd; padding:6px 8px; }
 .filter-table tbody tr{ cursor: default; }
 .filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
-
-
-/* ===== Filter modal: csak a táblázat görgessen (v5.6.1) ===== */
-#filterModal .modal-content{
-  max-height: 90vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-#filterModal .table-scroll{
-  flex: 1 1 auto;
-  margin-top: 12px;
-  max-height: none; /* felülírja a calc(...) szabályt */
-  overflow-y: auto;
-}
-
 
 
     #appVersion{
@@ -97,7 +81,23 @@
     }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
-  </style>
+  
+/* ===== Filter táblázat: csak a TBODY görgessen (v5.6.2) ===== */
+#filterModal .table-scroll{ overflow: hidden; }
+#filterModal .filter-table{ width: 100%; height: 100%; border-collapse: collapse; }
+#filterModal .filter-table thead, 
+#filterModal .filter-table tbody tr{
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+#filterModal .filter-table tbody{
+  display: block;
+  overflow-y: auto;
+  max-height: calc(100% - 40px); /* kb. fejléc magasság */
+}
+
+</style>
 </head>
 
 <body>

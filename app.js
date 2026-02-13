@@ -1,4 +1,4 @@
-const APP_VERSION = "5.9.1";
+const APP_VERSION = "5.9.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -571,10 +571,12 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
 
-        // UI frissítés: kiválasztások törlése + táblázat újraszűrése
+        // UI frissítés: cache frissítés + kiválasztások törlése + táblázat újraszűrése
+        // (különben törlés után a táblázatban még látszódhatnak sorok a cache miatt)
+        _allMarkersCache = await DB.getAllMarkersActive();
         selectedFilterMarkerIds.clear();
         updateFilterShowButtonState();
-        await applyFilter();
+        applyFilter();
       } catch (e) {
         console.error(e);
         alert("Hiba történt a törlés közben.");

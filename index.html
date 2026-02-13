@@ -57,8 +57,10 @@
         background: #f9fafb;
       }
 
-.filter-table tbody tr{ cursor: default; }
-.filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
+	.filter-table tbody tr{ cursor: pointer; }
+	/* A celláknak külön fehér háttere van, ezért a hover/kijelölés is a TD-ken legyen */
+	.filter-table tbody tr:hover td{ background: #f3f4f6; }
+	.filter-table tbody tr.row-selected td{ background: #dbeafe; }
 #filterModal .modal-content{
   max-height: 90vh;
   display: flex;

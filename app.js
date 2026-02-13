@@ -1,6 +1,7 @@
-const APP_VERSION = "5.7";
+const APP_VERSION = "5.7.1";
 
-let selectedFilterMarkerId = null; // selected row in Szűrés táblázat
+// Szűrés táblázat kijelölés (több sor is kijelölhető)
+let selectedFilterMarkerIds = new Set();
 
 let map;
 let addMode = false;
@@ -384,8 +385,8 @@ function openFilterModal() {
   document.getElementById("filterModal").style.display = "flex";
   document.getElementById("sfAddress").value = "";
 
-  
-  selectedFilterMarkerId = null;
+  // újranyitáskor alapból töröljük a kijelöléseket (később átállítható, ha kell)
+  selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
   if (showBtn) showBtn.disabled = true;
 DB.getAllMarkersActive().then(all => {
@@ -397,7 +398,7 @@ DB.getAllMarkersActive().then(all => {
 
 function closeFilterModal() {
   document.getElementById("filterModal").style.display = "none";
-  selectedFilterMarkerId = null;
+  selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
   if (showBtn) showBtn.disabled = true;
 }
@@ -426,30 +427,68 @@ async function fillFilterCombos() {
   });
 }
 
+function updateFilterShowButtonState() {
+  const showBtn = document.getElementById("filterShowBtn");
+  if (showBtn) showBtn.disabled = selectedFilterMarkerIds.size === 0;
+}
+
+function toggleFilterRowSelection(markerId, trEl) {
+  if (selectedFilterMarkerIds.has(markerId)) {
+    selectedFilterMarkerIds.delete(markerId);
+    if (trEl) trEl.classList.remove("row-selected");
+  } else {
+    selectedFilterMarkerIds.add(markerId);
+    if (trEl) trEl.classList.add("row-selected");
+  }
+  updateFilterShowButtonState();
+}
+
 function renderFilterList(list) {
 const tb = document.getElementById("sfList");
   tb.innerHTML = "";
   list.forEach(m => {
     const tr = document.createElement("tr");
     tr.dataset.markerId = String(m.id);
+	    if (selectedFilterMarkerIds.has(m.id)) {
+	      tr.classList.add("row-selected");
+	    }
     tr.innerHTML = `
       <td>${idText(m.id)}</td>
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>
     `;
-    tr.addEventListener("dblclick", () => {
-      const id = Number(tr.dataset.markerId);
-      const mk = markerLayers.get(id);
-      if (mk) {
-        const ll = mk.getLatLng();
-        map.setView(ll, Math.max(map.getZoom(), 18));
-        mk.openPopup();
-      }
-      closeFilterModal();
-    });
+	    // 1 kattintás: kijelölés (több sor is lehet)
+	    tr.addEventListener("click", () => {
+	      const markerId = tr.dataset.markerId;
+	      if (!markerId) return;
+	      toggleFilterRowSelection(markerId, tr);
+	      updateFilterShowButtonState();
+	    });
+
+	    // dupla kattintás: ugrás a markerre + ablak bezárása
+	    tr.addEventListener("dblclick", () => {
+	      const markerId = tr.dataset.markerId;
+	      if (markerId) {
+	        // biztos kijelölés a duplakattnál is
+	        if (!selectedFilterMarkerIds.has(Number(markerId))) {
+	          selectedFilterMarkerIds.add(Number(markerId));
+	          tr.classList.add("row-selected");
+	          updateFilterShowButtonState();
+	        }
+	      }
+	      const id = Number(tr.dataset.markerId);
+	      const mk = markerLayers.get(id);
+	      if (mk) {
+	        const ll = mk.getLatLng();
+	        map.setView(ll, Math.max(map.getZoom(), 18));
+	        mk.openPopup();
+	      }
+	      closeFilterModal();
+	    });
     tb.appendChild(tr);
   });
+	  updateFilterShowButtonState();
 }
 
 function applyFilter() {
@@ -475,8 +514,8 @@ document.addEventListener("DOMContentLoaded", () => {
     showBtn.disabled = true;
     showBtn.addEventListener("click", () => {
       // Funkció a következő lépésben
-      if (!selectedFilterMarkerId) return;
-      console.log("Megjelenítés:", selectedFilterMarkerId);
+	      if (selectedFilterMarkerIds.size === 0) return;
+	      console.log("Megjelenítés:", Array.from(selectedFilterMarkerIds));
     });
   }
 document.getElementById("sfAddress").addEventListener("input", applyFilter);

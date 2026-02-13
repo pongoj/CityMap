@@ -65,6 +65,7 @@
   max-height: 90vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* ne lógjanak ki a gombok kis kijelzőn */
 }
 #filterModal .table-scroll{
   flex: 1 1 auto;
@@ -72,6 +73,9 @@
   margin-top: 12px;
   overflow: auto; /* vertical + horizontal */
 }
+
+/* Szűrés ablak gombok: ha nem fér ki egy sorba, törjön */
+#filterModal .modal-actions{ flex-wrap: wrap; }
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
       background: rgba(255,255,255,.86);

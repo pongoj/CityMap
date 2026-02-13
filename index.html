@@ -28,10 +28,22 @@
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
-.filter-table{ border:1px solid #ddd; }
-.filter-table th, .filter-table td{ border:1px solid #ddd; padding:6px 8px; }
-.filter-table tr{ cursor: default; }
-.filter-table tr:hover{ background: rgba(0,0,0,0.04); }
+
+/* ===== Filter modal layout fix (v5.6.1) ===== */
+#filterModal .modal-content{
+  width: min(900px, 94vw);
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#filterModal .modal-actions{ margin-top: 12px; }
+#filterModal .table-scroll{
+  flex: 1 1 auto;
+  max-height: none;
+  overflow-y: auto;
+  border-radius: 12px;
+}
 
 
     #appVersion{
@@ -148,7 +160,7 @@
         </div>
       </div>
 
-      <table class="filter-table" style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
+      <table style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
         <thead>
           <tr>
             <th style="text-align:left;border-bottom:1px solid #ddd">ID</th>

@@ -28,7 +28,48 @@
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
+.table-scroll {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        overflow: auto; /* vertical + horizontal */
+        max-height: 360px; /* only the table area scrolls */
+        background: #fff;
+      }
+.table-scroll thead th{ background: #fff; }
+.filter-table {
+        border-collapse: collapse;
+        width: max-content; /* allow horizontal scroll when needed */
+        min-width: 100%;
+      }
+.filter-table th,
+      .filter-table td {
+        border: 1px solid #e5e7eb;
+        padding: 8px 10px;
+        font-size: 14px;
+        vertical-align: top;
+        white-space: nowrap; /* horizontal scroll instead of wrapping */
+        background: #fff;
+      }
+      .filter-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #f9fafb;
+      }
 
+.filter-table tbody tr{ cursor: default; }
+.filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
+#filterModal .modal-content{
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+#filterModal .table-scroll{
+  flex: 1 1 auto;
+  min-height: 0; /* fontos: így csak itt lesz scroll */
+  margin-top: 12px;
+  overflow: auto; /* vertical + horizontal */
+}
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
       background: rgba(255,255,255,.86);
@@ -74,14 +115,7 @@
     }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
-  
-/* ===== Szűrés táblázat scroll + fejléc igazítás (v5.6.4) ===== */
-#filterModal .filter-table-head{ margin-top: 12px; padding-right: var(--sf-scrollbar, 0px); }
-#filterModal .filter-table-head table{ width:100%; table-layout: fixed; }
-#filterModal .table-scroll{ margin-top: 0; max-height: 320px; overflow-y: auto; border-radius: 12px; }
-#filterModal .table-scroll .filter-table-body{ width:100%; table-layout: fixed; }
-
-</style>
+  </style>
 </head>
 
 <body>
@@ -150,17 +184,25 @@
         </div>
       </div>
 
-      <table style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr>
-            <th style="text-align:left;border-bottom:1px solid #ddd">ID</th>
-            <th style="text-align:left;border-bottom:1px solid #ddd">Cím</th>
-            <th style="text-align:left;border-bottom:1px solid #ddd">Típus</th>
-            <th style="text-align:left;border-bottom:1px solid #ddd">Állapot</th>
-          </tr>
-        </thead>
-        <tbody id="sfList"></tbody>
-      </table>
+      <div class="table-scroll" id="sfTableScroll">
+        <table class="filter-table" id="sfTable">
+          <colgroup>
+            <col style="width:22%">
+            <col style="width:52%">
+            <col style="width:13%">
+            <col style="width:13%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cím</th>
+              <th>Típus</th>
+              <th>Állapot</th>
+            </tr>
+          </thead>
+          <tbody id="sfList"></tbody>
+        </table>
+      </div>
 
       <div class="modal-actions">
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>

@@ -1,4 +1,4 @@
-const APP_VERSION = "5.6.4";
+const APP_VERSION = "5.6.5";
 
 let map;
 let addMode = false;
@@ -386,7 +386,6 @@ function openFilterModal() {
     _allMarkersCache = all;
     fillFilterCombos();
     renderFilterList(all);
-  setTimeout(syncFilterTableHeader, 0);
   });
 }
 
@@ -419,16 +418,27 @@ async function fillFilterCombos() {
 }
 
 function renderFilterList(list) {
-  const tb = document.getElementById("sfList");
+const tb = document.getElementById("sfList");
   tb.innerHTML = "";
   list.forEach(m => {
     const tr = document.createElement("tr");
+    tr.dataset.markerId = String(m.id);
     tr.innerHTML = `
       <td>${idText(m.id)}</td>
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>
     `;
+    tr.addEventListener("dblclick", () => {
+      const id = Number(tr.dataset.markerId);
+      const mk = markerLayers.get(id);
+      if (mk) {
+        const ll = mk.getLatLng();
+        map.setView(ll, Math.max(map.getZoom(), 18));
+        mk.openPopup();
+      }
+      closeFilterModal();
+    });
     tb.appendChild(tr);
   });
 }
@@ -455,17 +465,3 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);
 });
-
-
-
-function syncFilterTableHeader(){
-  const modal = document.getElementById("filterModal");
-  if(!modal) return;
-  const scroll = modal.querySelector(".table-scroll");
-  if(!scroll) return;
-  const sbw = scroll.offsetWidth - scroll.clientWidth;
-  modal.style.setProperty("--sf-scrollbar", (sbw>0? sbw : 0) + "px");
-}
-
-
-window.addEventListener("resize", syncFilterTableHeader);

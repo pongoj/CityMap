@@ -115,7 +115,11 @@
     }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
-  </style>
+  
+  /* Filter table row selection */
+  #sfTable tbody tr.selected { background: rgba(0, 123, 255, 0.15); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+</style>
 </head>
 
 <body>
@@ -205,6 +209,7 @@
       </div>
 
       <div class="modal-actions">
+        <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>
       </div>
     </div>

@@ -1,4 +1,6 @@
-const APP_VERSION = "5.6.5";
+const APP_VERSION = "5.7";
+
+let selectedFilterMarkerId = null; // selected row in Szűrés táblázat
 
 let map;
 let addMode = false;
@@ -382,7 +384,11 @@ function openFilterModal() {
   document.getElementById("filterModal").style.display = "flex";
   document.getElementById("sfAddress").value = "";
 
-  DB.getAllMarkersActive().then(all => {
+  
+  selectedFilterMarkerId = null;
+  const showBtn = document.getElementById("filterShowBtn");
+  if (showBtn) showBtn.disabled = true;
+DB.getAllMarkersActive().then(all => {
     _allMarkersCache = all;
     fillFilterCombos();
     renderFilterList(all);
@@ -391,6 +397,9 @@ function openFilterModal() {
 
 function closeFilterModal() {
   document.getElementById("filterModal").style.display = "none";
+  selectedFilterMarkerId = null;
+  const showBtn = document.getElementById("filterShowBtn");
+  if (showBtn) showBtn.disabled = true;
 }
 
 async function fillFilterCombos() {
@@ -461,7 +470,16 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnFilter").addEventListener("click", openFilterModal);
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
 
-  document.getElementById("sfAddress").addEventListener("input", applyFilter);
+    const showBtn = document.getElementById("filterShowBtn");
+  if (showBtn) {
+    showBtn.disabled = true;
+    showBtn.addEventListener("click", () => {
+      // Funkció a következő lépésben
+      if (!selectedFilterMarkerId) return;
+      console.log("Megjelenítés:", selectedFilterMarkerId);
+    });
+  }
+document.getElementById("sfAddress").addEventListener("input", applyFilter);
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);
 });

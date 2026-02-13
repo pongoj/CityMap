@@ -1,4 +1,4 @@
-const APP_VERSION = "5.6.2";
+const APP_VERSION = "5.6.3";
 
 let map;
 let addMode = false;

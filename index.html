@@ -28,8 +28,8 @@
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
-.table-scroll{ max-height: calc(100vh - 340px); overflow-y: auto; border-radius:12px; }
-.table-scroll thead th{ background: #fff; }
+.table-scroll{ max-height: 320px; overflow-y: auto; border-radius:12px; }
+.table-scroll thead th{ position: sticky; top: 0; z-index: 2; background: #fff; }
 .filter-table{ border:1px solid #ddd; border-collapse:collapse; }
 .filter-table th, .filter-table td{ border:1px solid #ddd; padding:6px 8px; }
 .filter-table tbody tr{ cursor: default; }
@@ -38,13 +38,7 @@
 
 /* ===== Filter modal: csak a táblázat görgessen (v5.6.1) ===== */
 
-/* ===== Filter táblázat: fejléc fix, csak a lista görgessen (v5.6.2) ===== */
-#filterModal .filter-table-head{ margin-top: 12px; }
-#filterModal .filter-table-head table{ width:100%; border-collapse:collapse; font-size:13px; }
-#filterModal .filter-table-body{ width:100%; border-collapse:collapse; font-size:13px; }
-#filterModal .filter-table-head .filter-table{ border-bottom:0; }
-#filterModal .table-scroll{ margin-top:0; }
-#filterModal .table-scroll .filter-table{ border-top:0; }
+
 
 #filterModal .modal-content{
   max-height: 90vh;
@@ -175,16 +169,15 @@
         </div>
       </div>
 
-      <div class="filter-table-head">
-        <table class="filter-table">
-
+      
+      <div class="table-scroll">
+        <table class="filter-table" style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
           <colgroup>
             <col style="width:22%">
             <col style="width:48%">
             <col style="width:15%">
             <col style="width:15%">
           </colgroup>
-
           <thead>
             <tr>
               <th style="text-align:left">ID</th>
@@ -193,19 +186,6 @@
               <th style="text-align:left">Állapot</th>
             </tr>
           </thead>
-        </table>
-      </div>
-
-      <div class="table-scroll">
-        <table class="filter-table filter-table-body">
-
-          <colgroup>
-            <col style="width:22%">
-            <col style="width:48%">
-            <col style="width:15%">
-            <col style="width:15%">
-          </colgroup>
-
           <tbody id="sfList"></tbody>
         </table>
       </div>

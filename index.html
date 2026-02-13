@@ -36,6 +36,31 @@
 .filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
 
 
+/* ===== Filter modal: csak a táblázat görgessen (v5.6.1) ===== */
+
+/* ===== Filter táblázat: fejléc fix, csak a lista görgessen (v5.6.2) ===== */
+#filterModal .filter-table-head{ margin-top: 12px; }
+#filterModal .filter-table-head table{ width:100%; border-collapse:collapse; font-size:13px; }
+#filterModal .filter-table-body{ width:100%; border-collapse:collapse; font-size:13px; }
+#filterModal .filter-table-head .filter-table{ border-bottom:0; }
+#filterModal .table-scroll{ margin-top:0; }
+#filterModal .table-scroll .filter-table{ border-top:0; }
+
+#filterModal .modal-content{
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#filterModal .table-scroll{
+  flex: 1 1 auto;
+  margin-top: 12px;
+  max-height: none; /* felülírja a calc(...) szabályt */
+  overflow-y: auto;
+}
+
+
+
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
       background: rgba(255,255,255,.86);
@@ -81,23 +106,7 @@
     }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
-  
-/* ===== Filter táblázat: csak a TBODY görgessen (v5.6.2) ===== */
-#filterModal .table-scroll{ overflow: hidden; }
-#filterModal .filter-table{ width: 100%; height: 100%; border-collapse: collapse; }
-#filterModal .filter-table thead, 
-#filterModal .filter-table tbody tr{
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
-#filterModal .filter-table tbody{
-  display: block;
-  overflow-y: auto;
-  max-height: calc(100% - 40px); /* kb. fejléc magasság */
-}
-
-</style>
+  </style>
 </head>
 
 <body>
@@ -166,19 +175,40 @@
         </div>
       </div>
 
+      <div class="filter-table-head">
+        <table class="filter-table">
+
+          <colgroup>
+            <col style="width:22%">
+            <col style="width:48%">
+            <col style="width:15%">
+            <col style="width:15%">
+          </colgroup>
+
+          <thead>
+            <tr>
+              <th style="text-align:left">ID</th>
+              <th style="text-align:left">Cím</th>
+              <th style="text-align:left">Típus</th>
+              <th style="text-align:left">Állapot</th>
+            </tr>
+          </thead>
+        </table>
+      </div>
+
       <div class="table-scroll">
-      <table class="filter-table" style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr>
-            <th style="text-align:left;border-bottom:1px solid #ddd">ID</th>
-            <th style="text-align:left;border-bottom:1px solid #ddd">Cím</th>
-            <th style="text-align:left;border-bottom:1px solid #ddd">Típus</th>
-            <th style="text-align:left;border-bottom:1px solid #ddd">Állapot</th>
-          </tr>
-        </thead>
-        <tbody id="sfList"></tbody>
-      </table>
-    </div>
+        <table class="filter-table filter-table-body">
+
+          <colgroup>
+            <col style="width:22%">
+            <col style="width:48%">
+            <col style="width:15%">
+            <col style="width:15%">
+          </colgroup>
+
+          <tbody id="sfList"></tbody>
+        </table>
+      </div>
 
       <div class="modal-actions">
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>

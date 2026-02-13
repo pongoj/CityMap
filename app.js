@@ -1,4 +1,4 @@
-const APP_VERSION = "5.6.6";
+const APP_VERSION = "5.6.4";
 
 let map;
 let addMode = false;
@@ -418,16 +418,27 @@ async function fillFilterCombos() {
 }
 
 function renderFilterList(list) {
-  const tb = document.getElementById("sfList");
+const tb = document.getElementById("sfList");
   tb.innerHTML = "";
   list.forEach(m => {
     const tr = document.createElement("tr");
+    tr.dataset.markerId = String(m.id);
     tr.innerHTML = `
       <td>${idText(m.id)}</td>
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>
     `;
+    tr.addEventListener("dblclick", () => {
+      const id = Number(tr.dataset.markerId);
+      const mk = markerLayers.get(id);
+      if (mk) {
+        const ll = mk.getLatLng();
+        map.setView(ll, Math.max(map.getZoom(), 18));
+        mk.openPopup();
+      }
+      closeFilterModal();
+    });
     tb.appendChild(tr);
   });
 }

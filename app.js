@@ -428,8 +428,16 @@ async function fillFilterCombos() {
 }
 
 function updateFilterShowButtonState() {
+  // 5.8: a kijelöléshez kötött gombok állapotának frissítése
+  const hasSelection = selectedFilterMarkerIds.size > 0;
+
   const showBtn = document.getElementById("filterShowBtn");
-  if (showBtn) showBtn.disabled = selectedFilterMarkerIds.size === 0;
+  const clearBtn = document.getElementById("filterClearSelectionBtn");
+  const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
+
+  if (showBtn) showBtn.disabled = !hasSelection;
+  if (clearBtn) clearBtn.disabled = !hasSelection;
+  if (deleteBtn) deleteBtn.disabled = !hasSelection;
 }
 
 function toggleFilterRowSelection(markerId, trEl) {
@@ -440,6 +448,13 @@ function toggleFilterRowSelection(markerId, trEl) {
     selectedFilterMarkerIds.add(markerId);
     if (trEl) trEl.classList.add("row-selected");
   }
+  updateFilterShowButtonState();
+}
+
+function clearAllFilterSelections() {
+  selectedFilterMarkerIds.clear();
+  // csak a táblázatban vegyük le a kijelölést
+  document.querySelectorAll('#sfList tr.row-selected').forEach(tr => tr.classList.remove('row-selected'));
   updateFilterShowButtonState();
 }
 
@@ -518,7 +533,21 @@ document.addEventListener("DOMContentLoaded", () => {
 	      console.log("Megjelenítés:", Array.from(selectedFilterMarkerIds));
     });
   }
-document.getElementById("sfAddress").addEventListener("input", applyFilter);
+
+  const clearBtn = document.getElementById("filterClearSelectionBtn");
+  if (clearBtn) {
+    clearBtn.disabled = true;
+    clearBtn.addEventListener("click", clearAllFilterSelections);
+  }
+
+  const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.addEventListener("click", () => {
+      // Funkció később (5.8-ban még nincs törlés)
+    });
+  }
+  document.getElementById("sfAddress").addEventListener("input", applyFilter);
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);
 });

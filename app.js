@@ -1,4 +1,4 @@
-const APP_VERSION = "5.9";
+const APP_VERSION = "5.9.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -544,12 +544,16 @@ document.addEventListener("DOMContentLoaded", () => {
   if (deleteBtn) {
     deleteBtn.disabled = true;
     deleteBtn.addEventListener("click", async () => {
-      if (selectedIds.size === 0) {
+      const ids = Array.from(selectedFilterMarkerIds)
+        .map((x) => Number(x))
+        .filter((x) => Number.isFinite(x));
+
+      if (ids.length === 0) {
         alert("Nincs kijelölt sor.");
         return;
       }
 
-      const count = selectedIds.size;
+      const count = ids.length;
       const ok = confirm(
         `Biztosan törlöd a kijelölt ${count} db marker(eke)t? Ez a művelet nem vonható vissza.`
       );
@@ -557,22 +561,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
       try {
         // Törlés az adatbázisból (soft delete) + eltávolítás a térképről
-        for (const idStr of Array.from(selectedIds)) {
-          const id = Number(idStr);
-          if (!Number.isFinite(id)) continue;
-
+        for (const id of ids) {
           await DB.softDeleteMarker(id);
 
-          const leafletMarker = markersByDbId.get(id);
+          const leafletMarker = markerLayers.get(id);
           if (leafletMarker) {
             map.removeLayer(leafletMarker);
-            markersByDbId.delete(id);
+            markerLayers.delete(id);
           }
         }
 
-        // UI frissítés: kiválasztások törlése + lista/térkép frissítése
-        selectedIds.clear();
-        await loadMarkers();
+        // UI frissítés: kiválasztások törlése + táblázat újraszűrése
+        selectedFilterMarkerIds.clear();
+        updateFilterShowButtonState();
+        await applyFilter();
       } catch (e) {
         console.error(e);
         alert("Hiba történt a törlés közben.");

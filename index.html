@@ -36,6 +36,22 @@
 .filter-table tbody tr:hover{ background: rgba(0,0,0,0.04); }
 
 
+/* ===== Filter modal: csak a táblázat görgessen (v5.6.1) ===== */
+#filterModal .modal-content{
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#filterModal .table-scroll{
+  flex: 1 1 auto;
+  margin-top: 12px;
+  max-height: none; /* felülírja a calc(...) szabályt */
+  overflow-y: auto;
+}
+
+
+
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
       background: rgba(255,255,255,.86);

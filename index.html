@@ -28,8 +28,11 @@
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
-.table-scroll{ max-height: calc(100vh - 340px); overflow-y: auto; border-radius:12px; }
-.table-scroll thead th{ position: sticky; top: 0; background: #fff; }
+.filter-table{ border:1px solid #ddd; }
+.filter-table th, .filter-table td{ border:1px solid #ddd; padding:6px 8px; }
+.filter-table tr{ cursor: default; }
+.filter-table tr:hover{ background: rgba(0,0,0,0.04); }
+
 
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
@@ -145,8 +148,7 @@
         </div>
       </div>
 
-      <div class="table-scroll">
-      <table style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
+      <table class="filter-table" style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
         <thead>
           <tr>
             <th style="text-align:left;border-bottom:1px solid #ddd">ID</th>
@@ -157,7 +159,6 @@
         </thead>
         <tbody id="sfList"></tbody>
       </table>
-    </div>
 
       <div class="modal-actions">
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>

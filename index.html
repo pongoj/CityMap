@@ -28,6 +28,8 @@
     .btn-loc{ background:#16a34a; color:#fff; }
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
+.table-scroll{ max-height: calc(100vh - 340px); overflow-y: auto; border-radius:12px; }
+.table-scroll thead th{ position: sticky; top: 0; background: #fff; }
 
     #appVersion{
       position:fixed; left:8px; bottom:8px; z-index:1200;
@@ -126,7 +128,7 @@
 
   
   <div id="filterModal" class="modal">
-    <div class="modal-content" style="max-height: calc(100vh - 24px); overflow-y: auto;">
+    <div class="modal-content">
       <h3 style="margin:0 0 6px 0;">Szűrés</h3>
 
       <label>Cím</label>
@@ -143,6 +145,7 @@
         </div>
       </div>
 
+      <div class="table-scroll">
       <table style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px">
         <thead>
           <tr>
@@ -154,6 +157,7 @@
         </thead>
         <tbody id="sfList"></tbody>
       </table>
+    </div>
 
       <div class="modal-actions">
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>

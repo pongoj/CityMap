@@ -1,4 +1,4 @@
-const APP_VERSION = "5.10";
+const APP_VERSION = "5.10.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -472,6 +472,10 @@ const tb = document.getElementById("sfList");
 	    if (selectedFilterMarkerIds.has(m.id)) {
 	      tr.classList.add("row-selected");
 	    }
+	    // Soft delete: törölt sorok vizuális jelölése
+	    if (m.deletedAt || m.deleted) {
+	      tr.classList.add("row-deleted");
+	    }
     tr.innerHTML = `
       <td>${idText(m.id)}</td>
       <td>${escapeHtml(m.address)}</td>
@@ -479,7 +483,8 @@ const tb = document.getElementById("sfList");
       <td>${escapeHtml(m.statusLabel)}</td>
     `;
 	    // 1 kattintás: kijelölés (több sor is lehet)
-	    tr.addEventListener("click", () => {
+	    tr.addEventListener("click", (ev) => {
+	      ev.stopPropagation();
 	      const markerId = tr.dataset.markerId;
 	      if (!markerId) return;
 	      toggleFilterRowSelection(markerId, tr);
@@ -487,7 +492,9 @@ const tb = document.getElementById("sfList");
 	    });
 
 	    // dupla kattintás: ugrás a markerre + ablak bezárása
-	    tr.addEventListener("dblclick", () => {
+	    tr.addEventListener("dblclick", (ev) => {
+	      ev.stopPropagation();
+	      // Törölt elemre ne ugorjunk / ne zárjuk be a szűrés ablakot
 	      const markerId = tr.dataset.markerId;
 	      if (markerId) {
 	        // biztos kijelölés a duplakattnál is
@@ -497,14 +504,16 @@ const tb = document.getElementById("sfList");
 	          updateFilterShowButtonState();
 	        }
 	      }
+	      // ha törölt (soft delete), akkor ne zárjuk be a modalt
+	      if (tr.classList.contains("row-deleted")) return;
 	      const id = Number(tr.dataset.markerId);
 	      const mk = markerLayers.get(id);
 	      if (mk) {
 	        const ll = mk.getLatLng();
 	        map.setView(ll, Math.max(map.getZoom(), 18));
 	        mk.openPopup();
+	        closeFilterModal();
 	      }
-	      closeFilterModal();
 	    });
     tb.appendChild(tr);
   });

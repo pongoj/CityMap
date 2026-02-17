@@ -61,6 +61,8 @@
 	/* A celláknak külön fehér háttere van, ezért a hover/kijelölés is a TD-ken legyen */
 	.filter-table tbody tr:hover td{ background: #f3f4f6; }
 	.filter-table tbody tr.row-selected td{ background: #dbeafe; }
+	.filter-table tbody tr.row-deleted td{ color:#6b7280; text-decoration: line-through; background:#f9fafb; }
+	.filter-table tbody tr.row-selected.row-deleted td{ text-decoration: line-through; }
 #filterModal .modal-content{
   max-height: 90vh;
   display: flex;

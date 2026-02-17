@@ -1,4 +1,4 @@
-const APP_VERSION = "5.13.1";
+const APP_VERSION = "5.14";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -54,34 +54,89 @@ function closeSimpleModal(el) {
 
 async function openPhotoGallery(markerUuid, titleText) {
   try {
-    const photos = await DB.getPhotosByMarkerUuid(markerUuid);
-    if (photoGalleryGrid) photoGalleryGrid.innerHTML = "";
-    if (photoGalleryMeta) {
-      const t = titleText ? `${titleText} — ` : "";
-      photoGalleryMeta.textContent = `${t}${photos.length} kép`;
-    }
+    const updatePopupPhotoCountUI = async () => {
+      try {
+        const count = await DB.getPhotoCount(markerUuid);
+        const span = document.getElementById(`pc-${markerUuid}`);
+        if (span) span.textContent = count;
+        const btn = document.querySelector(`button.btnPhotos[data-uuid="${markerUuid}"]`);
+        if (btn) btn.disabled = count === 0;
+      } catch (_) {
+        // no-op
+      }
+    };
 
-    if (!photoGalleryGrid) {
-      openSimpleModal(photoGalleryModal);
-      return;
-    }
+    const render = async () => {
+      const photos = await DB.getPhotosByMarkerUuid(markerUuid);
+      if (photoGalleryGrid) photoGalleryGrid.innerHTML = "";
+      if (photoGalleryMeta) {
+        const t = titleText ? `${titleText} — ` : "";
+        photoGalleryMeta.textContent = `${t}${photos.length} kép`;
+      }
 
-    if (photos.length === 0) {
-      photoGalleryGrid.innerHTML = '<div style="color:#6b7280; padding:8px;">Nincs hozzárendelt kép.</div>';
-    } else {
+      if (!photoGalleryGrid) {
+        openSimpleModal(photoGalleryModal);
+        return;
+      }
+
+      if (photos.length === 0) {
+        photoGalleryGrid.innerHTML = '<div class="photo-empty">Nincs hozzárendelt kép.</div>';
+        await updatePopupPhotoCountUI();
+        return;
+      }
+
       for (const p of photos) {
         const url = URL.createObjectURL(p.blob);
+
         const item = document.createElement("div");
         item.className = "photo-item";
-        item.innerHTML = `
-          <a href="${url}" target="_blank" rel="noopener">
-            <img src="${url}" alt="Fénykép" />
-          </a>
-          <div class="meta">${new Date(p.createdAt || Date.now()).toLocaleString()}</div>
-        `;
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "Fénykép";
+        a.appendChild(img);
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = new Date(p.createdAt || Date.now()).toLocaleString();
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "photo-delete";
+        del.textContent = "Törlés";
+        del.title = "Kép törlése";
+        del.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const ok = confirm("Biztosan törlöd ezt a képet? Ez nem visszavonható.");
+          if (!ok) return;
+
+          try {
+            URL.revokeObjectURL(url);
+            await DB.deletePhotoById(p.id);
+            await render();
+          } catch (err) {
+            console.error("delete photo error", err);
+            alert("Nem sikerült törölni a képet.");
+          }
+        });
+
+        item.appendChild(a);
+        item.appendChild(del);
+        item.appendChild(meta);
         photoGalleryGrid.appendChild(item);
       }
-    }
+
+      await updatePopupPhotoCountUI();
+    };
+
+    await render();
 
     openSimpleModal(photoGalleryModal);
   } catch (err) {

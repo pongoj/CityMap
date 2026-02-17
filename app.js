@@ -1,4 +1,4 @@
-const APP_VERSION = "5.14";
+const APP_VERSION = "5.15";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -57,10 +57,24 @@ async function openPhotoGallery(markerUuid, titleText) {
     const updatePopupPhotoCountUI = async () => {
       try {
         const count = await DB.getPhotoCount(markerUuid);
-        const span = document.getElementById(`pc-${markerUuid}`);
-        if (span) span.textContent = count;
-        const btn = document.querySelector(`button.btnPhotos[data-uuid="${markerUuid}"]`);
-        if (btn) btn.disabled = count === 0;
+        // Több helyen is lehet fotó gomb (marker popup + szűrés táblázat),
+        // ezért nem támaszkodunk egyedi ID-kre.
+        const countEls = document.querySelectorAll(
+          `.photo-count[data-uuid="${CSS.escape(markerUuid)}"]`
+        );
+        countEls.forEach((el) => (el.textContent = String(count)));
+
+        const btns = document.querySelectorAll(
+          `button.btnPhotos[data-uuid="${CSS.escape(markerUuid)}"]`
+        );
+        btns.forEach((btn) => {
+          btn.disabled = count === 0;
+          btn.title = count === 0 ? "Nincs hozzárendelt fotó" : "";
+        });
+
+        // Visszafelé kompatibilitás (régi span ID)
+        const legacySpan = document.getElementById(`pc-${markerUuid}`);
+        if (legacySpan) legacySpan.textContent = String(count);
       } catch (_) {
         // no-op
       }
@@ -289,7 +303,9 @@ function popupHtml(m) {
     <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
 
     <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btnPhotos" data-uuid="${m.uuid}" data-title="${idText(m.id)}">Fotók (<span id="pc-${m.uuid}">…</span>)</button>
+      <button class="btnPhotos" data-uuid="${m.uuid}" data-title="${idText(m.id)}">
+        Fotók (<span class="photo-count" data-uuid="${m.uuid}">…</span>)
+      </button>
       ${m.deletedAt ? '<span style="color:#b91c1c;font-weight:700;">TÖRÖLT</span>' : ''}
     </div>
 
@@ -320,7 +336,8 @@ function wirePopupPhotos(marker, m) {
     const el = e.popup.getElement();
     if (!el) return;
     const btn = el.querySelector(".btnPhotos");
-    const span = el.querySelector(`#pc-${CSS.escape(m.uuid)}`);
+    const span = el.querySelector(`.photo-count[data-uuid="${CSS.escape(m.uuid)}"]`) ||
+                 el.querySelector(`#pc-${CSS.escape(m.uuid)}`); // legacy
 
     try {
       const cnt = await DB.countPhotosByMarkerUuid(m.uuid);
@@ -703,7 +720,40 @@ const tb = document.getElementById("sfList");
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>
+      <td class="note-col">${escapeHtml(m.notes || "")}</td>
+      <td class="photos-col">
+        <button class="btnPhotos" data-uuid="${escapeHtml(m.uuid)}" data-title="${idText(m.id)}">
+          Fotók (<span class="photo-count" data-uuid="${escapeHtml(m.uuid)}">…</span>)
+        </button>
+      </td>
     `;
+
+
+	    // Fotók gomb: ugyanazt a galériát nyitja meg, mint a marker popupban.
+	    // Fontos: ne jelölje ki a sort (stopPropagation).
+	    const photoBtn = tr.querySelector('button.btnPhotos');
+	    if (photoBtn) {
+	      photoBtn.addEventListener('click', async (ev) => {
+	        ev.preventDefault();
+	        ev.stopPropagation();
+	        const uuid = photoBtn.dataset.uuid;
+	        if (!uuid) return;
+	        await openPhotoGallery(uuid, idText(m.id));
+	      });
+	      // Szám frissítése (és disable, ha 0)
+	      const cntSpan = photoBtn.querySelector(`.photo-count[data-uuid="${CSS.escape(m.uuid)}"]`);
+	      DB.getPhotoCount(m.uuid)
+	        .then((cnt) => {
+	          if (cntSpan) cntSpan.textContent = String(cnt);
+	          photoBtn.disabled = cnt === 0;
+	          photoBtn.title = cnt === 0 ? 'Nincs hozzárendelt fotó' : '';
+	        })
+	        .catch(() => {
+	          if (cntSpan) cntSpan.textContent = '0';
+	          photoBtn.disabled = true;
+	        });
+	    }
+
 	    // 1 kattintás: kijelölés (több sor is lehet)
 	    tr.addEventListener("click", (ev) => {
 	      ev.stopPropagation();

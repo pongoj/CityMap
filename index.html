@@ -50,6 +50,14 @@
         white-space: nowrap; /* horizontal scroll instead of wrapping */
         background: #fff;
       }
+
+      /* Megjegyzés oszlop: lehessen tördelni és ne húzza szét a táblát */
+      .filter-table th.note-col,
+      .filter-table td.note-col {
+        white-space: normal;
+        max-width: 260px;
+        overflow-wrap: anywhere;
+      }
       .filter-table thead th {
         position: sticky;
         top: 0;
@@ -261,10 +269,12 @@
       <div class="table-scroll" id="sfTableScroll">
         <table class="filter-table" id="sfTable">
           <colgroup>
-            <col style="width:22%">
-            <col style="width:52%">
-            <col style="width:13%">
-            <col style="width:13%">
+            <col style="width:18%">
+            <col style="width:34%">
+            <col style="width:12%">
+            <col style="width:12%">
+            <col style="width:18%">
+            <col style="width:6%">
           </colgroup>
           <thead>
             <tr>
@@ -272,6 +282,8 @@
               <th>Cím</th>
               <th>Típus</th>
               <th>Állapot</th>
+              <th class="note-col">Megjegyzés</th>
+              <th>Fotók</th>
             </tr>
           </thead>
           <tbody id="sfList"></tbody>

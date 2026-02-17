@@ -1,4 +1,4 @@
-const APP_VERSION = "5.10.1";
+const APP_VERSION = "5.11";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -7,6 +7,31 @@ let filterShowDeleted = false; // Szűrés listában töröltek megjelenítése
 let map;
 let addMode = false;
 let pendingLatLng = null;
+
+// v5.11: új markerhez fényképek hozzárendelése mentés előtt (draft uuid)
+let currentDraftUuid = null;
+let draftHasSaved = false;
+
+async function updateAttachPhotoLabel() {
+  const btn = document.getElementById("btnAttachPhoto");
+  if (!btn) return;
+  try {
+    const n = currentDraftUuid ? await DB.countPhotosByMarkerUuid(currentDraftUuid) : 0;
+    btn.textContent = `Fénykép hozzárendelése (${n})`;
+  } catch (e) {
+    console.warn("Photo count failed", e);
+  }
+}
+
+async function cleanupDraftPhotosIfNeeded() {
+  try {
+    if (currentDraftUuid && !draftHasSaved) {
+      await DB.deletePhotosByMarkerUuid(currentDraftUuid);
+    }
+  } catch (e) {
+    console.warn("Draft photo cleanup failed", e);
+  }
+}
 
 const markerLayers = new Map();
 
@@ -54,10 +79,17 @@ function showHint(text, ms = 2500) {
 
 function openModal(latlng) {
   pendingLatLng = latlng;
+
+  // v5.11: új marker felviteli folyamat => új draft uuid fényképekhez
+  draftHasSaved = false;
+  currentDraftUuid = genUuid();
+
   document.getElementById("fCity").value = "";
   document.getElementById("fStreet").value = "";
   document.getElementById("fHouse").value = "";
   document.getElementById("fNotes").value = "";
+
+  updateAttachPhotoLabel();
 
   // reverse geocode
   fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`)
@@ -77,9 +109,13 @@ function openModal(latlng) {
   document.getElementById("markerModal").style.display = "flex";
 }
 
-function closeModal() {
+async function closeModal() {
   document.getElementById("markerModal").style.display = "none";
   pendingLatLng = null;
+
+  // Ha a felhasználó mégsem ment, a draft képeket töröljük, hogy ne maradjon szemét.
+  await cleanupDraftPhotosIfNeeded();
+  currentDraftUuid = null;
 }
 
 let myLocationMarker = null;
@@ -222,6 +258,7 @@ async function saveMarker() {
   const typeSel = document.getElementById("fType");
   const statusSel = document.getElementById("fStatus");
 
+  const uuid = currentDraftUuid || genUuid();
   const marker = {
     lat: pendingLatLng.lat,
     lng: pendingLatLng.lng,
@@ -234,11 +271,14 @@ async function saveMarker() {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     deletedAt: null,
-    uuid: genUuid()
+    uuid
   };
 
   const id = await DB.addMarker(marker);
   marker.id = id;
+
+  // Ettől kezdve a draft-hoz tartozó képek "éles" markerhez vannak kötve.
+  draftHasSaved = true;
 
   addMarkerToMap(marker);
   closeModal();
@@ -287,6 +327,33 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("btnCancel").addEventListener("click", closeModal);
   document.getElementById("btnSave").addEventListener("click", saveMarker);
+
+  // v5.11: fénykép hozzárendelése (kamera / tallózás)
+  const btnAttachPhoto = document.getElementById("btnAttachPhoto");
+  const photoInput = document.getElementById("photoInput");
+  if (btnAttachPhoto && photoInput) {
+    btnAttachPhoto.addEventListener("click", () => {
+      if (!currentDraftUuid) {
+        draftHasSaved = false;
+        currentDraftUuid = genUuid();
+      }
+      photoInput.value = "";
+      photoInput.click();
+    });
+
+    photoInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      for (const f of files) {
+        try {
+          await DB.addPhoto(currentDraftUuid, f);
+        } catch (err) {
+          console.error("Photo save failed", err);
+        }
+      }
+      await updateAttachPhotoLabel();
+    });
+  }
 
   document.getElementById("btnAdd").addEventListener("click", () => {
     addMode = true;

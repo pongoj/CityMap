@@ -121,6 +121,13 @@
       display:flex; justify-content:flex-end; gap:10px;
       margin-top: 14px;
     }
+
+    /* v5.11: marker modal actions: photo button left, cancel/save right */
+    .modal-actions.marker-actions{ justify-content: space-between; align-items: center; flex-wrap: wrap; }
+    .modal-actions.marker-actions .left-actions,
+    .modal-actions.marker-actions .right-actions{ display:flex; gap:10px; align-items:center; }
+    /* On narrow screens keep buttons readable */
+    .modal-actions.marker-actions .left-actions{ flex: 1 1 auto; }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
   
@@ -170,9 +177,15 @@
       <label>Megjegyzés (opcionális)</label>
       <textarea id="fNotes" placeholder="pl. festés kopott, csavar hiányzik..."></textarea>
 
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="btnCancel">Mégse</button>
-        <button class="btn btn-save" id="btnSave">Mentés</button>
+      <div class="modal-actions marker-actions">
+        <div class="left-actions">
+          <button class="btn btn-ghost" id="btnAttachPhoto" type="button">Fénykép hozzárendelése (0)</button>
+          <input id="photoInput" type="file" accept="image/*" multiple capture="environment" style="display:none" />
+        </div>
+        <div class="right-actions">
+          <button class="btn btn-ghost" id="btnCancel">Mégse</button>
+          <button class="btn btn-save" id="btnSave">Mentés</button>
+        </div>
       </div>
     </div>
   </div>

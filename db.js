@@ -1,5 +1,6 @@
 const DB_NAME = "citymap-db";
-const DB_VERSION = 2;
+// v5.11: photos stored locally (IndexedDB) and linked to marker uuid
+const DB_VERSION = 3;
 
 const DB = {
   _db: null,
@@ -23,6 +24,13 @@ const DB = {
           const s = e.target.transaction.objectStore("markers");
           if (!s.indexNames.contains("by_uuid")) s.createIndex("by_uuid", "uuid", { unique: true });
           if (!s.indexNames.contains("by_deletedAt")) s.createIndex("by_deletedAt", "deletedAt", { unique: false });
+        }
+
+        // Fényképek (marker uuid-hoz rendelve)
+        if (!db.objectStoreNames.contains("photos")) {
+          const p = db.createObjectStore("photos", { keyPath: "id", autoIncrement: true });
+          p.createIndex("by_markerUuid", "markerUuid", { unique: false });
+          p.createIndex("by_createdAt", "createdAt", { unique: false });
         }
 // Combo értékek (később admin felületről bővíthető)
         if (!db.objectStoreNames.contains("lookups")) {
@@ -79,6 +87,47 @@ const DB = {
   _store(name, mode) {
     const tx = this._db.transaction(name, mode);
     return tx.objectStore(name);
+  },
+
+  addPhoto(markerUuid, file) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("photos", "readwrite");
+      const rec = {
+        markerUuid,
+        createdAt: Date.now(),
+        name: file?.name || "photo.jpg",
+        type: file?.type || "image/jpeg",
+        blob: file
+      };
+      const r = s.add(rec);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
+  countPhotosByMarkerUuid(markerUuid) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("photos", "readonly");
+      const idx = s.index("by_markerUuid");
+      const r = idx.count(markerUuid);
+      r.onsuccess = () => resolve(r.result || 0);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
+  deletePhotosByMarkerUuid(markerUuid) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("photos", "readwrite");
+      const idx = s.index("by_markerUuid");
+      const req = idx.openCursor(IDBKeyRange.only(markerUuid));
+      req.onsuccess = (ev) => {
+        const cur = ev.target.result;
+        if (!cur) return resolve(true);
+        s.delete(cur.primaryKey);
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
   },
 
   addMarker(marker) {

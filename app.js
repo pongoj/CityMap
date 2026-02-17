@@ -1,4 +1,4 @@
-const APP_VERSION = "5.14";
+const APP_VERSION = "5.14.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -703,6 +703,7 @@ const tb = document.getElementById("sfList");
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>
+      <td>${escapeHtml(m.notes || "")}</td>
     `;
 	    // 1 kattintás: kijelölés (több sor is lehet)
 	    tr.addEventListener("click", (ev) => {

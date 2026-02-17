@@ -155,6 +155,34 @@ const DB = {
     });
   },
 
+  getAllPhotos() {
+    return new Promise((resolve, reject) => {
+      const s = this._store("photos", "readonly");
+      const req = s.openCursor();
+      const out = [];
+      req.onsuccess = (ev) => {
+        const cur = ev.target.result;
+        if (!cur) return resolve(out);
+        out.push({ id: cur.primaryKey, ...cur.value });
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  /**
+   * Safety cleanup: remove photo rows that have no markerUuid.
+   * These can appear if an older marker had no uuid at the time of attach.
+   */
+  async cleanInvalidPhotos() {
+    const photos = await this.getAllPhotos();
+    const bad = photos.filter((p) => !p.markerUuid);
+    for (const p of bad) {
+      await this.deletePhotoById(p.id);
+    }
+    return bad.length;
+  },
+
   addMarker(marker) {
     return new Promise((resolve, reject) => {
       const s = this._store("markers", "readwrite");

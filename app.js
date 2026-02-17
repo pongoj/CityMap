@@ -1,4 +1,4 @@
-const APP_VERSION = "5.13";
+const APP_VERSION = "5.13.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -418,6 +418,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }).addTo(map);
 
   await DB.init();
+
+  // DB migrations / safety cleanups (uuid backfill, invalid photo rows)
+  await DB.backfillMarkerMeta();
+  await DB.cleanInvalidPhotos();
+
   await fillLookups();
 
   document.getElementById("btnCancel").addEventListener("click", closeModal);

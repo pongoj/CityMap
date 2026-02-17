@@ -1,7 +1,8 @@
-const APP_VERSION = "5.9.2";
+const APP_VERSION = "5.10";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
+let filterShowDeleted = false; // Szűrés listában töröltek megjelenítése
 
 let map;
 let addMode = false;
@@ -388,18 +389,21 @@ function openFilterModal() {
   // újranyitáskor alapból töröljük a kijelöléseket (később átállítható, ha kell)
   selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
+  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showBtn) showBtn.disabled = true;
-DB.getAllMarkersActive().then(all => {
-    _allMarkersCache = all;
-    fillFilterCombos();
-    renderFilterList(all);
-  });
+refreshFilterData();
+
+  const showDelBtn = document.getElementById("filterShowDeletedBtn");
+  if (showDelBtn) {
+    showDelBtn.textContent = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
+  }
 }
 
 function closeFilterModal() {
   document.getElementById("filterModal").style.display = "none";
   selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
+  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showBtn) showBtn.disabled = true;
 }
 
@@ -432,6 +436,7 @@ function updateFilterShowButtonState() {
   const hasSelection = selectedFilterMarkerIds.size > 0;
 
   const showBtn = document.getElementById("filterShowBtn");
+  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   const clearBtn = document.getElementById("filterClearSelectionBtn");
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
 
@@ -520,11 +525,20 @@ function applyFilter() {
   renderFilterList(res);
 }
 
+
+async function refreshFilterData() {
+  _allMarkersCache = filterShowDeleted ? await DB.getAllMarkers() : await DB.getAllMarkersActive();
+  fillFilterCombos();
+  applyFilter();
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnFilter").addEventListener("click", openFilterModal);
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
 
     const showBtn = document.getElementById("filterShowBtn");
+  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showBtn) {
     showBtn.disabled = true;
     showBtn.addEventListener("click", () => {
@@ -555,7 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const count = ids.length;
       const ok = confirm(
-        `Biztosan törlöd a kijelölt ${count} db marker(eke)t? Ez a művelet nem vonható vissza.`
+        `Biztosan törlöd (soft delete) a kijelölt ${count} db marker(eke)t? A töröltek később megjeleníthetők.`
       );
       if (!ok) return;
 
@@ -573,7 +587,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // UI frissítés: cache frissítés + kiválasztások törlése + táblázat újraszűrése
         // (különben törlés után a táblázatban még látszódhatnak sorok a cache miatt)
-        _allMarkersCache = await DB.getAllMarkersActive();
+        _allMarkersCache = filterShowDeleted ? await DB.getAllMarkers() : await DB.getAllMarkersActive();
         selectedFilterMarkerIds.clear();
         updateFilterShowButtonState();
         applyFilter();
@@ -583,6 +597,15 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+  if (showDeletedBtn) {
+    showDeletedBtn.addEventListener("click", async () => {
+      filterShowDeleted = !filterShowDeleted;
+      showDeletedBtn.textContent = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
+      clearAllFilterSelections();
+      await refreshFilterData();
+    });
+  }
+
   document.getElementById("sfAddress").addEventListener("input", applyFilter);
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);

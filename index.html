@@ -130,6 +130,35 @@
     .modal-actions.marker-actions .left-actions{ flex: 1 1 auto; }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
     .btn-save{ background:#111827; color:#fff; }
+
+    /* Photo gallery */
+    .photo-grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap:10px;
+      max-height: min(60vh, 520px);
+      overflow:auto;
+      padding:2px;
+    }
+    .photo-item{
+      position:relative;
+    }
+    .photo-item img{
+      width:100%;
+      height:120px;
+      object-fit:cover;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      background:#fff;
+    }
+    .photo-item .meta{
+      font-size:12px;
+      color:#6b7280;
+      margin-top:6px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
   
   /* Filter table row selection */
   #sfTable tbody tr.selected { background: rgba(0, 123, 255, 0.15); }
@@ -235,6 +264,20 @@
         <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
         <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="photoGalleryModal" class="modal">
+    <div class="modal-content" style="max-width: 760px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h3 style="margin:0;">Fotók</h3>
+        <button class="btn btn-ghost" id="btnPhotoGalleryCloseTop" type="button">Bezár</button>
+      </div>
+      <div id="photoGalleryMeta" style="margin:8px 0 12px 0; color:#555;"></div>
+      <div id="photoGalleryGrid" class="photo-grid"></div>
+      <div class="modal-actions" style="justify-content:flex-end;">
+        <button class="btn btn-ghost" id="btnPhotoGalleryClose">Bezár</button>
       </div>
     </div>
   </div>

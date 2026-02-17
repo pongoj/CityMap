@@ -1,4 +1,4 @@
-const APP_VERSION = "5.11";
+const APP_VERSION = "5.13";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -34,6 +34,69 @@ async function cleanupDraftPhotosIfNeeded() {
 }
 
 const markerLayers = new Map();
+
+// Fotó galéria (markerhez rendelt képek megtekintése)
+const photoGalleryModal = document.getElementById("photoGalleryModal");
+const photoGalleryGrid = document.getElementById("photoGalleryGrid");
+const photoGalleryMeta = document.getElementById("photoGalleryMeta");
+const btnPhotoGalleryClose = document.getElementById("btnPhotoGalleryClose");
+const btnPhotoGalleryCloseTop = document.getElementById("btnPhotoGalleryCloseTop");
+
+function openSimpleModal(el) {
+  if (!el) return;
+  el.style.display = "block";
+}
+
+function closeSimpleModal(el) {
+  if (!el) return;
+  el.style.display = "none";
+}
+
+async function openPhotoGallery(markerUuid, titleText) {
+  try {
+    const photos = await DB.getPhotosByMarkerUuid(markerUuid);
+    if (photoGalleryGrid) photoGalleryGrid.innerHTML = "";
+    if (photoGalleryMeta) {
+      const t = titleText ? `${titleText} — ` : "";
+      photoGalleryMeta.textContent = `${t}${photos.length} kép`;
+    }
+
+    if (!photoGalleryGrid) {
+      openSimpleModal(photoGalleryModal);
+      return;
+    }
+
+    if (photos.length === 0) {
+      photoGalleryGrid.innerHTML = '<div style="color:#6b7280; padding:8px;">Nincs hozzárendelt kép.</div>';
+    } else {
+      for (const p of photos) {
+        const url = URL.createObjectURL(p.blob);
+        const item = document.createElement("div");
+        item.className = "photo-item";
+        item.innerHTML = `
+          <a href="${url}" target="_blank" rel="noopener">
+            <img src="${url}" alt="Fénykép" />
+          </a>
+          <div class="meta">${new Date(p.createdAt || Date.now()).toLocaleString()}</div>
+        `;
+        photoGalleryGrid.appendChild(item);
+      }
+    }
+
+    openSimpleModal(photoGalleryModal);
+  } catch (err) {
+    console.error("openPhotoGallery error", err);
+    alert("Nem sikerült betölteni a képeket.");
+  }
+}
+
+if (btnPhotoGalleryClose) btnPhotoGalleryClose.addEventListener("click", () => closeSimpleModal(photoGalleryModal));
+if (btnPhotoGalleryCloseTop) btnPhotoGalleryCloseTop.addEventListener("click", () => closeSimpleModal(photoGalleryModal));
+if (photoGalleryModal) {
+  photoGalleryModal.addEventListener("click", (e) => {
+    if (e.target === photoGalleryModal) closeSimpleModal(photoGalleryModal);
+  });
+}
 
 function genUuid() {
   if (crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -170,6 +233,11 @@ function popupHtml(m) {
     <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
     <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
 
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btnPhotos" data-uuid="${m.uuid}" data-title="${idText(m.id)}">Fotók (<span id="pc-${m.uuid}">…</span>)</button>
+      ${m.deletedAt ? '<span style="color:#b91c1c;font-weight:700;">TÖRÖLT</span>' : ''}
+    </div>
+
     <div style="margin-top:10px;display:flex;justify-content:flex-end">
       <button data-del="${m.id}">Törlés</button>
     </div>
@@ -192,6 +260,32 @@ function wirePopupDelete(marker, dbId) {
   });
 }
 
+function wirePopupPhotos(marker, m) {
+  marker.on("popupopen", async (e) => {
+    const el = e.popup.getElement();
+    if (!el) return;
+    const btn = el.querySelector(".btnPhotos");
+    const span = el.querySelector(`#pc-${CSS.escape(m.uuid)}`);
+
+    try {
+      const cnt = await DB.countPhotosByMarkerUuid(m.uuid);
+      if (span) span.textContent = String(cnt);
+      if (btn) {
+        btn.disabled = cnt === 0;
+        btn.title = cnt === 0 ? "Nincs hozzárendelt kép" : "Képek megtekintése";
+        btn.onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openPhotoGallery(m.uuid, btn.getAttribute("data-title") || idText(m.id));
+        };
+      }
+    } catch (err) {
+      console.error("photo count error", err);
+      if (span) span.textContent = "0";
+    }
+  });
+}
+
 async function getMarker(id) {
   const all = await DB.getAllMarkersActive();
   return all.find(x => x.id === id) || null;
@@ -202,6 +296,7 @@ function addMarkerToMap(m) {
 mk.__data = m;
   mk.bindPopup(popupHtml(m));
   wirePopupDelete(mk, m.id);
+  wirePopupPhotos(mk, m);
 
   mk.on("dragend", async (e) => {
     const p = e.target.getLatLng();

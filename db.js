@@ -130,6 +130,31 @@ const DB = {
     });
   },
 
+  getPhotosByMarkerUuid(markerUuid) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("photos", "readonly");
+      const idx = s.index("by_markerUuid");
+      const out = [];
+      const req = idx.openCursor(IDBKeyRange.only(markerUuid));
+      req.onsuccess = (ev) => {
+        const cur = ev.target.result;
+        if (!cur) return resolve(out);
+        out.push({ id: cur.primaryKey, ...cur.value });
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  deletePhotoById(photoId) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("photos", "readwrite");
+      const r = s.delete(photoId);
+      r.onsuccess = () => resolve(true);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
   addMarker(marker) {
     return new Promise((resolve, reject) => {
       const s = this._store("markers", "readwrite");

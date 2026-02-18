@@ -1,4 +1,4 @@
-const APP_VERSION = "5.17.2";
+const APP_VERSION = "5.17.3";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -940,8 +940,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (rows.length !== 1) return;
 
       const tr = rows[0];
-      if (tr.classList.contains('row-deleted')) return;
-
       const id = Number(tr.dataset.markerId);
       const uuid = tr.dataset.markerUuid || "";
       if (!uuid) return;

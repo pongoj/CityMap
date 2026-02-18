@@ -1,8 +1,11 @@
-const APP_VERSION = "5.14.1";
+const APP_VERSION = "5.15.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
 let filterShowDeleted = false; // Szűrés listában töröltek megjelenítése
+
+// v5.15: térképi megjelenítés szűrése (csak kijelöltek / táblázat tartalma)
+let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív marker látszik
 
 let map;
 let addMode = false;
@@ -362,6 +365,13 @@ mk.__data = m;
   });
 
   markerLayers.set(m.id, mk);
+
+  // v5.15: ha aktív térképi szűrés van, az új marker csak akkor maradjon látható, ha benne van a szűrésben
+  if (activeMapFilterIds instanceof Set) {
+    if (!activeMapFilterIds.has(Number(m.id))) {
+      map.removeLayer(mk);
+    }
+  }
 }
 
 async function loadMarkers() {
@@ -657,14 +667,46 @@ function updateFilterShowButtonState() {
   // 5.8: a kijelöléshez kötött gombok állapotának frissítése
   const hasSelection = selectedFilterMarkerIds.size > 0;
 
+  const tableHasRows = document.querySelectorAll('#sfList tr').length > 0;
+
   const showBtn = document.getElementById("filterShowBtn");
   const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   const clearBtn = document.getElementById("filterClearSelectionBtn");
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
 
-  if (showBtn) showBtn.disabled = !hasSelection;
+  // v5.15: Megjelenítés akkor is működjön, ha nincs kijelölés (ilyenkor a táblázat aktuális sorai alapján)
+  if (showBtn) showBtn.disabled = !tableHasRows;
   if (clearBtn) clearBtn.disabled = !hasSelection;
   if (deleteBtn) deleteBtn.disabled = !hasSelection;
+}
+
+function getIdsFromCurrentFilterTable({ includeDeleted = false } = {}) {
+  const ids = [];
+  document.querySelectorAll('#sfList tr').forEach((tr) => {
+    const idStr = tr.dataset.markerId;
+    if (!idStr) return;
+    if (!includeDeleted && tr.classList.contains('row-deleted')) return;
+    const id = Number(idStr);
+    if (Number.isFinite(id)) ids.push(id);
+  });
+  return ids;
+}
+
+function applyMapMarkerVisibility(idsToShow) {
+  const want = new Set((idsToShow || []).map((x) => Number(x)).filter((x) => Number.isFinite(x)));
+  activeMapFilterIds = want.size > 0 ? want : new Set();
+
+  // Minden aktív (térképen létező) markerből csak a kért id-k maradjanak láthatók
+  for (const [id, mk] of markerLayers.entries()) {
+    const shouldBeVisible = want.has(Number(id));
+    const isVisibleNow = map && mk ? map.hasLayer(mk) : false;
+
+    if (shouldBeVisible && !isVisibleNow) {
+      mk.addTo(map);
+    } else if (!shouldBeVisible && isVisibleNow) {
+      map.removeLayer(mk);
+    }
+  }
 }
 
 function toggleFilterRowSelection(markerId, trEl) {
@@ -774,9 +816,29 @@ document.addEventListener("DOMContentLoaded", () => {
   if (showBtn) {
     showBtn.disabled = true;
     showBtn.addEventListener("click", () => {
-      // Funkció a következő lépésben
-	      if (selectedFilterMarkerIds.size === 0) return;
-	      console.log("Megjelenítés:", Array.from(selectedFilterMarkerIds));
+      // v5.15: Megjelenítés
+      // - ha van kijelölés: csak a kijelölt (nem törölt) markerek maradjanak a térképen
+      // - ha nincs kijelölés: a táblázat aktuális (szűrt) tartalma alapján
+
+      const selectedIds = Array.from(selectedFilterMarkerIds)
+        .map((x) => Number(x))
+        .filter((x) => Number.isFinite(x));
+
+      let idsToShow = [];
+      if (selectedIds.length > 0) {
+        // törölt elemeket ne próbáljuk megjeleníteni (amúgy sincsenek a térképen)
+        const deletedInSelection = new Set(
+          Array.from(document.querySelectorAll('#sfList tr.row-selected.row-deleted'))
+            .map((tr) => Number(tr.dataset.markerId))
+            .filter((x) => Number.isFinite(x))
+        );
+        idsToShow = selectedIds.filter((id) => !deletedInSelection.has(id));
+      } else {
+        idsToShow = getIdsFromCurrentFilterTable({ includeDeleted: false });
+      }
+
+      applyMapMarkerVisibility(idsToShow);
+      closeFilterModal();
     });
   }
 

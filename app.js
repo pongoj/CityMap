@@ -1,4 +1,4 @@
-const APP_VERSION = "5.16.0";
+const APP_VERSION = "5.17.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -712,11 +712,25 @@ function updateFilterShowButtonState() {
   const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   const clearBtn = document.getElementById("filterClearSelectionBtn");
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
+  const photosBtn = document.getElementById("filterPhotosBtn");
 
   // v5.15: Megjelenítés akkor is működjön, ha nincs kijelölés (ilyenkor a táblázat aktuális sorai alapján)
   if (showBtn) showBtn.disabled = !tableHasRows;
   if (clearBtn) clearBtn.disabled = !hasSelection;
   if (deleteBtn) deleteBtn.disabled = !hasSelection;
+
+  // v5.17: Fotók gomb csak akkor aktív, ha pontosan 1 (nem törölt) sor van kijelölve
+  if (photosBtn) {
+    const selectedRows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+    if (selectedRows.length !== 1) {
+      photosBtn.disabled = true;
+    } else {
+      const tr = selectedRows[0];
+      const uuid = tr?.dataset?.markerUuid || "";
+      const isDeleted = tr.classList.contains('row-deleted');
+      photosBtn.disabled = isDeleted || !uuid;
+    }
+  }
 }
 
 function getIdsFromCurrentFilterTable({ includeDeleted = false } = {}) {
@@ -774,6 +788,7 @@ const tb = document.getElementById("sfList");
   list.forEach(m => {
     const tr = document.createElement("tr");
     tr.dataset.markerId = String(m.id);
+	tr.dataset.markerUuid = String(m.uuid || "");
 	    if (selectedFilterMarkerIds.has(m.id)) {
 	      tr.classList.add("row-selected");
 	    }
@@ -895,6 +910,25 @@ document.addEventListener("DOMContentLoaded", () => {
   if (clearBtn) {
     clearBtn.disabled = true;
     clearBtn.addEventListener("click", clearAllFilterSelections);
+  }
+
+  const photosBtn = document.getElementById("filterPhotosBtn");
+  if (photosBtn) {
+    photosBtn.disabled = true;
+    photosBtn.addEventListener("click", async () => {
+      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+      if (rows.length !== 1) return;
+
+      const tr = rows[0];
+      if (tr.classList.contains('row-deleted')) return;
+
+      const id = Number(tr.dataset.markerId);
+      const uuid = tr.dataset.markerUuid || "";
+      if (!uuid) return;
+
+      // Ugyanaz a galéria modal, mint a marker popup "Fotók" gombjánál
+      openPhotoGallery(uuid, Number.isFinite(id) ? idText(id) : "Fotók");
+    });
   }
 
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");

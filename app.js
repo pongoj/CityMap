@@ -1,4 +1,4 @@
-const APP_VERSION = "5.17.3";
+const APP_VERSION = "5.17.4";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -345,6 +345,11 @@ function wirePopupDelete(marker, dbId) {
     if (!btn) return;
 
     btn.addEventListener("click", async () => {
+      const ok = confirm(
+        "Biztosan törlöd ezt a markert? (soft delete)\nA törölt marker később megjeleníthető a szűrés ablakban."
+      );
+      if (!ok) return;
+
       await DB.softDeleteMarker(dbId);
       map.removeLayer(marker);
       markerLayers.delete(dbId);
@@ -917,8 +922,22 @@ document.addEventListener("DOMContentLoaded", () => {
             .filter((x) => Number.isFinite(x))
         );
         idsToShow = selectedIds.filter((id) => !deletedInSelection.has(id));
+
+        // Ha csak törölt elemek vannak kijelölve, akkor ne zárjuk be az ablakot
+        if (idsToShow.length === 0) {
+          showHint("Nem lehet megjeleníteni a törölt markereket.");
+          return;
+        }
+
+        if (deletedInSelection.size > 0) {
+          showHint("A törölt markereket nem lehet megjeleníteni – kihagyva.");
+        }
       } else {
         idsToShow = getIdsFromCurrentFilterTable({ includeDeleted: false });
+        if (idsToShow.length === 0) {
+          showHint("Nincs megjeleníthető (nem törölt) marker a listában.");
+          return;
+        }
       }
 
       applyMapMarkerVisibility(idsToShow);

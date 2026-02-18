@@ -1,4 +1,4 @@
-const APP_VERSION = "5.15.0";
+const APP_VERSION = "5.16.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -10,6 +10,36 @@ let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív
 let map;
 let addMode = false;
 let pendingLatLng = null;
+
+// Térképi szűrés UI ("Összes megjelenítése" gomb)
+function updateShowAllButtonVisibility() {
+  const btn = document.getElementById("btnShowAll");
+  if (!btn) return;
+
+  // Akkor tekintjük szűrtnek a térképet, ha van aktív filter SET,
+  // és a jelenlegi aktív marker-készletből NEM mindegyik szerepel a filterben.
+  let filtered = false;
+  if (activeMapFilterIds instanceof Set) {
+    for (const id of markerLayers.keys()) {
+      if (!activeMapFilterIds.has(Number(id))) {
+        filtered = true;
+        break;
+      }
+    }
+    // Ha a filter üres, az is "szűrt" (0 marker látszik), ha van egyáltalán marker.
+    if (!filtered && markerLayers.size > 0 && activeMapFilterIds.size === 0) filtered = true;
+  }
+  btn.style.display = filtered ? "inline-block" : "none";
+}
+
+function clearMapMarkerVisibilityFilter() {
+  activeMapFilterIds = null;
+
+  for (const [, mk] of markerLayers.entries()) {
+    if (map && mk && !map.hasLayer(mk)) mk.addTo(map);
+  }
+  updateShowAllButtonVisibility();
+}
 
 // v5.11: új markerhez fényképek hozzárendelése mentés előtt (draft uuid)
 let currentDraftUuid = null;
@@ -314,6 +344,9 @@ function wirePopupDelete(marker, dbId) {
       await DB.softDeleteMarker(dbId);
       map.removeLayer(marker);
       markerLayers.delete(dbId);
+
+      if (activeMapFilterIds instanceof Set) activeMapFilterIds.delete(Number(dbId));
+      updateShowAllButtonVisibility();
     });
   });
 }
@@ -372,11 +405,15 @@ mk.__data = m;
       map.removeLayer(mk);
     }
   }
+
+  updateShowAllButtonVisibility();
 }
 
 async function loadMarkers() {
   const all = await DB.getAllMarkersActive();
   all.forEach(addMarkerToMap);
+
+  updateShowAllButtonVisibility();
 }
 
 async function fillLookups() {
@@ -535,6 +572,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     await DB.clearMarkers();
     for (const mk of markerLayers.values()) map.removeLayer(mk);
     markerLayers.clear();
+    activeMapFilterIds = null;
+    updateShowAllButtonVisibility();
   });
 
   map.on("click", (e) => {
@@ -707,6 +746,8 @@ function applyMapMarkerVisibility(idsToShow) {
       map.removeLayer(mk);
     }
   }
+
+  updateShowAllButtonVisibility();
 }
 
 function toggleFilterRowSelection(markerId, trEl) {
@@ -811,6 +852,14 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnFilter").addEventListener("click", openFilterModal);
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
 
+  const btnShowAll = document.getElementById("btnShowAll");
+  if (btnShowAll) {
+    btnShowAll.addEventListener("click", () => {
+      clearMapMarkerVisibilityFilter();
+      showHint("Összes marker megjelenítve.");
+    });
+  }
+
     const showBtn = document.getElementById("filterShowBtn");
   const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showBtn) {
@@ -877,7 +926,11 @@ document.addEventListener("DOMContentLoaded", () => {
             map.removeLayer(leafletMarker);
             markerLayers.delete(id);
           }
+
+          if (activeMapFilterIds instanceof Set) activeMapFilterIds.delete(Number(id));
         }
+
+        updateShowAllButtonVisibility();
 
         // UI frissítés: cache frissítés + kiválasztások törlése + táblázat újraszűrése
         // (különben törlés után a táblázatban még látszódhatnak sorok a cache miatt)

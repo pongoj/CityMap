@@ -1,4 +1,4 @@
-const APP_VERSION = "5.17.4";
+const APP_VERSION = "5.18.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -790,20 +790,54 @@ function applyMapMarkerVisibility(idsToShow) {
 }
 
 function toggleFilterRowSelection(markerId, trEl) {
-  if (selectedFilterMarkerIds.has(markerId)) {
-    selectedFilterMarkerIds.delete(markerId);
+  const id = Number(markerId);
+  if (!Number.isFinite(id)) return;
+
+  const cb = trEl ? trEl.querySelector('input.row-select') : null;
+
+  if (selectedFilterMarkerIds.has(id)) {
+    selectedFilterMarkerIds.delete(id);
     if (trEl) trEl.classList.remove("row-selected");
+    if (cb) cb.checked = false;
   } else {
-    selectedFilterMarkerIds.add(markerId);
+    selectedFilterMarkerIds.add(id);
     if (trEl) trEl.classList.add("row-selected");
+    if (cb) cb.checked = true;
   }
+  updateFilterShowButtonState();
+}
+
+function selectOnlyFilterRow(markerId, trEl) {
+  const id = Number(markerId);
+  if (!Number.isFinite(id)) return;
+
+  // Ha már pontosan ez az egy van kijelölve, ne "kapcsolgassuk" le
+  if (selectedFilterMarkerIds.size === 1 && selectedFilterMarkerIds.has(id)) {
+    if (trEl) {
+      const cb = trEl.querySelector('input.row-select');
+      if (cb) cb.checked = true;
+    }
+    return;
+  }
+
+  selectedFilterMarkerIds.clear();
+  document.querySelectorAll('#sfList tr.row-selected').forEach(tr => tr.classList.remove('row-selected'));
+  document.querySelectorAll('#sfList input.row-select').forEach(cb => cb.checked = false);
+
+  selectedFilterMarkerIds.add(id);
+  if (trEl) {
+    trEl.classList.add('row-selected');
+    const cb = trEl.querySelector('input.row-select');
+    if (cb) cb.checked = true;
+  }
+
   updateFilterShowButtonState();
 }
 
 function clearAllFilterSelections() {
   selectedFilterMarkerIds.clear();
-  // csak a táblázatban vegyük le a kijelölést
   document.querySelectorAll('#sfList tr.row-selected').forEach(tr => tr.classList.remove('row-selected'));
+  document.querySelectorAll('#sfList input.row-select').forEach(cb => cb.checked = false);
   updateFilterShowButtonState();
 }
 
@@ -822,19 +856,32 @@ const tb = document.getElementById("sfList");
 	      tr.classList.add("row-deleted");
 	    }
     tr.innerHTML = `
+      <td style="text-align:center;"><input class="row-select" type="checkbox" ${selectedFilterMarkerIds.has(m.id) ? 'checked' : ''}></td>
       <td>${idText(m.id)}</td>
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>
       <td>${escapeHtml(m.notes || "")}</td>
     `;
+
+	    // Checkbox: többszörös kijelölés (nem törli a többit)
+	    const cb = tr.querySelector('input.row-select');
+	    if (cb) {
+	      cb.addEventListener('click', (ev) => ev.stopPropagation());
+	      cb.addEventListener('change', (ev) => {
+	        ev.stopPropagation();
+	        const markerId = tr.dataset.markerId;
+	        if (!markerId) return;
+	        toggleFilterRowSelection(markerId, tr);
+	      });
+	    }
+
 	    // 1 kattintás: kijelölés (több sor is lehet)
 	    tr.addEventListener("click", (ev) => {
 	      ev.stopPropagation();
 	      const markerId = tr.dataset.markerId;
 	      if (!markerId) return;
-	      toggleFilterRowSelection(markerId, tr);
-	      updateFilterShowButtonState();
+	      selectOnlyFilterRow(markerId, tr);
 	    });
 
 	    // dupla kattintás: ugrás a markerre + ablak bezárása
@@ -843,12 +890,8 @@ const tb = document.getElementById("sfList");
 	      // Törölt elemre ne ugorjunk / ne zárjuk be a szűrés ablakot
 	      const markerId = tr.dataset.markerId;
 	      if (markerId) {
-	        // biztos kijelölés a duplakattnál is
-	        if (!selectedFilterMarkerIds.has(Number(markerId))) {
-	          selectedFilterMarkerIds.add(Number(markerId));
-	          tr.classList.add("row-selected");
-	          updateFilterShowButtonState();
-	        }
+	        // biztos kijelölés a duplakattnál is (egykijelölés)
+	      selectOnlyFilterRow(markerId, tr);
 	      }
 	      // ha törölt (soft delete), akkor ne zárjuk be a modalt
 	      if (tr.classList.contains("row-deleted")) return;

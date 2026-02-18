@@ -239,6 +239,15 @@ const DB = {
     return this.getAllMarkers().then(list => (list || []).filter(m => !m.deletedAt));
   },
 
+  getMarkerById(id) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("markers", "readonly");
+      const r = s.get(Number(id));
+      r.onsuccess = () => resolve(r.result || null);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
   // Soft delete (online sync-hoz barátságosabb)
   softDeleteMarker(id) {
     return new Promise((resolve, reject) => {

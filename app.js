@@ -1,4 +1,4 @@
-const APP_VERSION = "5.18.0";
+const APP_VERSION = "5.19.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -13,6 +13,11 @@ let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív
 let map;
 let addMode = false;
 let pendingLatLng = null;
+
+// Objektum módosítás (markerModal újrafelhasználása)
+let markerModalMode = "add"; // "add" | "edit"
+let editingMarkerId = null;
+let editingMarkerUuid = null;
 
 // Térképi szűrés UI ("Összes megjelenítése" gomb)
 function updateShowAllButtonVisibility() {
@@ -233,6 +238,9 @@ function showHint(text, ms = 2500) {
 }
 
 function openModal(latlng) {
+  markerModalMode = "add";
+  editingMarkerId = null;
+  editingMarkerUuid = null;
   pendingLatLng = latlng;
 
   // v5.11: új marker felviteli folyamat => új draft uuid fényképekhez
@@ -243,6 +251,9 @@ function openModal(latlng) {
   document.getElementById("fStreet").value = "";
   document.getElementById("fHouse").value = "";
   document.getElementById("fNotes").value = "";
+
+  setMarkerModalTitle("add");
+  setMarkerModalControlsDisabled({ addressLocked: false });
 
   updateAttachPhotoLabel();
 
@@ -268,8 +279,14 @@ async function closeModal() {
   document.getElementById("markerModal").style.display = "none";
   pendingLatLng = null;
 
-  // Ha a felhasználó mégsem ment, a draft képeket töröljük, hogy ne maradjon szemét.
-  await cleanupDraftPhotosIfNeeded();
+  // Ha a felhasználó mégsem ment ÚJ MARKERT, a draft képeket töröljük, hogy ne maradjon szemét.
+  if (markerModalMode === "add") {
+    await cleanupDraftPhotosIfNeeded();
+  }
+
+  markerModalMode = "add";
+  editingMarkerId = null;
+  editingMarkerUuid = null;
   currentDraftUuid = null;
 }
 
@@ -331,7 +348,10 @@ function popupHtml(m) {
     </div>
 
     <div style="margin-top:10px;display:flex;justify-content:flex-end">
-      <button data-del="${m.id}">Törlés</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <button data-edit="${m.id}">Objektum módosítása</button>
+        <button data-del="${m.id}">Törlés</button>
+      </div>
     </div>
   </div>`;
 }
@@ -356,6 +376,29 @@ function wirePopupDelete(marker, dbId) {
 
       if (activeMapFilterIds instanceof Set) activeMapFilterIds.delete(Number(dbId));
       updateShowAllButtonVisibility();
+    });
+  });
+}
+
+function wirePopupEdit(marker, dbId) {
+  marker.on("popupopen", (e) => {
+    const el = e.popup.getElement();
+    if (!el) return;
+    const btn = el.querySelector(`button[data-edit="${dbId}"]`);
+    if (!btn) return;
+
+    btn.addEventListener("click", async () => {
+      try {
+        const m = await DB.getMarkerById(dbId);
+        if (!m || m.deletedAt) {
+          alert("A törölt marker nem módosítható.");
+          return;
+        }
+        openEditModal(m);
+      } catch (err) {
+        console.error("open edit from popup failed", err);
+        alert("Nem sikerült betölteni a marker adatait.");
+      }
     });
   });
 }
@@ -396,6 +439,7 @@ function addMarkerToMap(m) {
 mk.__data = m;
   mk.bindPopup(popupHtml(m));
   wirePopupDelete(mk, m.id);
+  wirePopupEdit(mk, m.id);
   wirePopupPhotos(mk, m);
 
   mk.on("dragend", async (e) => {
@@ -416,6 +460,60 @@ mk.__data = m;
   }
 
   updateShowAllButtonVisibility();
+}
+
+function setMarkerModalControlsDisabled({ addressLocked }) {
+  const city = document.getElementById("fCity");
+  const street = document.getElementById("fStreet");
+  const house = document.getElementById("fHouse");
+  const type = document.getElementById("fType");
+  if (city) city.disabled = !!addressLocked;
+  if (street) street.disabled = !!addressLocked;
+  if (house) house.disabled = !!addressLocked;
+  if (type) type.disabled = !!addressLocked;
+}
+
+function setMarkerModalTitle(mode) {
+  const titleEl = document.getElementById("markerModalTitle");
+  const hintEl = document.getElementById("markerModalHint");
+  if (titleEl) titleEl.textContent = mode === "edit" ? "Objektum módosítása" : "Objektum rögzítése";
+  if (hintEl) {
+    hintEl.textContent = mode === "edit"
+      ? "A cím és a típus nem módosítható. Állapot, megjegyzés és fotók frissíthetők."
+      : "Bökés helyén jön létre, utána húzással finomítható.";
+  }
+}
+
+async function openEditModal(marker) {
+  markerModalMode = "edit";
+  editingMarkerId = marker.id;
+  editingMarkerUuid = marker.uuid;
+  pendingLatLng = null;
+
+  setMarkerModalTitle("edit");
+  setMarkerModalControlsDisabled({ addressLocked: true });
+
+  // Cím mezők (csak megjelenítés)
+  const parts = String(marker.address || "").split(",").map(x => x.trim()).filter(Boolean);
+  document.getElementById("fCity").value = parts[0] || "";
+  document.getElementById("fStreet").value = parts[1] || "";
+  document.getElementById("fHouse").value = parts[2] || "";
+
+  // Típus (nem módosítható)
+  const typeSel = document.getElementById("fType");
+  if (typeSel) typeSel.value = marker.type || typeSel.value;
+
+  // Állapot + megjegyzés (módosítható)
+  const statusSel = document.getElementById("fStatus");
+  if (statusSel) statusSel.value = marker.status || statusSel.value;
+  document.getElementById("fNotes").value = marker.notes || "";
+
+  // Fotók hozzáadás: a marker UUID-hoz kötjük
+  currentDraftUuid = editingMarkerUuid || genUuid();
+  draftHasSaved = true; // szerkesztésnél soha ne töröljük a képeket cancel esetén
+  await updateAttachPhotoLabel();
+
+  document.getElementById("markerModal").style.display = "flex";
 }
 
 async function loadMarkers() {
@@ -449,6 +547,34 @@ async function fillLookups() {
 }
 
 async function saveMarker() {
+  // EDIT mód
+  if (markerModalMode === "edit") {
+    if (!editingMarkerId) return;
+    const statusSel = document.getElementById("fStatus");
+    const notes = document.getElementById("fNotes").value.trim();
+    const status = statusSel ? statusSel.value : "";
+    const statusLabel = statusSel ? (statusSel.options[statusSel.selectedIndex]?.textContent || status) : status;
+
+    await DB.updateMarker(editingMarkerId, {
+      status,
+      statusLabel,
+      notes,
+      updatedAt: Date.now()
+    });
+
+    const updated = await DB.getMarkerById(editingMarkerId);
+    const mk = markerLayers.get(editingMarkerId);
+    if (updated && mk) {
+      mk.__data = updated;
+      mk.setPopupContent(popupHtml(updated));
+    }
+
+    closeModal();
+    showHint("Objektum módosítva.");
+    return;
+  }
+
+  // ADD mód
   if (!pendingLatLng) return;
 
   const city = document.getElementById("fCity").value.trim();
@@ -722,11 +848,23 @@ function updateFilterShowButtonState() {
   const clearBtn = document.getElementById("filterClearSelectionBtn");
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
   const photosBtn = document.getElementById("filterPhotosBtn");
+  const editBtn = document.getElementById("filterEditBtn");
 
   // v5.15: Megjelenítés akkor is működjön, ha nincs kijelölés (ilyenkor a táblázat aktuális sorai alapján)
   if (showBtn) showBtn.disabled = !tableHasRows;
   if (clearBtn) clearBtn.disabled = !hasSelection;
   if (deleteBtn) deleteBtn.disabled = !hasSelection;
+
+  // v5.19: Objektum módosítása gomb: pontosan 1 sor kijelölve ÉS nem törölt
+  if (editBtn) {
+    const selectedRows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+    if (selectedRows.length !== 1) {
+      editBtn.disabled = true;
+    } else {
+      const tr = selectedRows[0];
+      editBtn.disabled = tr.classList.contains('row-deleted');
+    }
+  }
 
   // v5.17.1: Fotók gomb csak akkor aktív, ha pontosan 1 sor van kijelölve ÉS van hozzárendelt fotó
   // (törölt marker esetén is aktív lehet, mert a fotók nem törlődnek a soft delete-tel)
@@ -1008,6 +1146,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Ugyanaz a galéria modal, mint a marker popup "Fotók" gombjánál
       openPhotoGallery(uuid, Number.isFinite(id) ? idText(id) : "Fotók");
+    });
+  }
+
+  const editBtn = document.getElementById("filterEditBtn");
+  if (editBtn) {
+    editBtn.disabled = true;
+    editBtn.addEventListener("click", async () => {
+      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+      if (rows.length !== 1) return;
+
+      const tr = rows[0];
+      if (tr.classList.contains('row-deleted')) return;
+
+      const id = Number(tr.dataset.markerId);
+      if (!Number.isFinite(id)) return;
+
+      try {
+        const m = await DB.getMarkerById(id);
+        if (!m || m.deletedAt) {
+          showHint("A törölt marker nem módosítható.");
+          return;
+        }
+        closeFilterModal();
+        openEditModal(m);
+      } catch (err) {
+        console.error("filter edit open failed", err);
+        alert("Nem sikerült betölteni a marker adatait.");
+      }
     });
   }
 

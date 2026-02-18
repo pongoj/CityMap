@@ -1,8 +1,11 @@
-const APP_VERSION = "5.17.0";
+const APP_VERSION = "5.17.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
 let filterShowDeleted = false; // Szűrés listában töröltek megjelenítése
+
+// v5.17.1: szűrés ablak "Fotók" gomb engedélyezése aszinkron fotószám ellenőrzéssel
+let filterPhotosBtnCheckToken = 0;
 
 // v5.15: térképi megjelenítés szűrése (csak kijelöltek / táblázat tartalma)
 let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív marker látszik
@@ -719,7 +722,8 @@ function updateFilterShowButtonState() {
   if (clearBtn) clearBtn.disabled = !hasSelection;
   if (deleteBtn) deleteBtn.disabled = !hasSelection;
 
-  // v5.17: Fotók gomb csak akkor aktív, ha pontosan 1 (nem törölt) sor van kijelölve
+  // v5.17.1: Fotók gomb csak akkor aktív, ha pontosan 1 sor van kijelölve ÉS van hozzárendelt fotó
+  // (törölt marker esetén is aktív lehet, mert a fotók nem törlődnek a soft delete-tel)
   if (photosBtn) {
     const selectedRows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
     if (selectedRows.length !== 1) {
@@ -727,8 +731,22 @@ function updateFilterShowButtonState() {
     } else {
       const tr = selectedRows[0];
       const uuid = tr?.dataset?.markerUuid || "";
-      const isDeleted = tr.classList.contains('row-deleted');
-      photosBtn.disabled = isDeleted || !uuid;
+      if (!uuid) {
+        photosBtn.disabled = true;
+      } else {
+        // alapból tiltjuk, amíg meg nem jön a DB-ből a fotószám (race-safe tokennel)
+        photosBtn.disabled = true;
+        const myToken = ++filterPhotosBtnCheckToken;
+        Promise.resolve(DB.getPhotoCount(uuid))
+          .then((count) => {
+            if (myToken !== filterPhotosBtnCheckToken) return;
+            photosBtn.disabled = !(Number(count) > 0);
+          })
+          .catch(() => {
+            if (myToken !== filterPhotosBtnCheckToken) return;
+            photosBtn.disabled = true;
+          });
+      }
     }
   }
 }

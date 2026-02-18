@@ -1,4 +1,4 @@
-const APP_VERSION = "5.17.1";
+const APP_VERSION = "5.17.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -92,7 +92,8 @@ async function openPhotoGallery(markerUuid, titleText) {
   try {
     const updatePopupPhotoCountUI = async () => {
       try {
-        const count = await DB.getPhotoCount(markerUuid);
+        // db.js-ben a publikus függvény neve: countPhotosByMarkerUuid
+        const count = await DB.countPhotosByMarkerUuid(markerUuid);
         const span = document.getElementById(`pc-${markerUuid}`);
         if (span) span.textContent = count;
         const btn = document.querySelector(`button.btnPhotos[data-uuid="${markerUuid}"]`);
@@ -737,7 +738,8 @@ function updateFilterShowButtonState() {
         // alapból tiltjuk, amíg meg nem jön a DB-ből a fotószám (race-safe tokennel)
         photosBtn.disabled = true;
         const myToken = ++filterPhotosBtnCheckToken;
-        Promise.resolve(DB.getPhotoCount(uuid))
+        // db.js-ben a publikus függvény neve: countPhotosByMarkerUuid
+        Promise.resolve(DB.countPhotosByMarkerUuid(uuid))
           .then((count) => {
             if (myToken !== filterPhotosBtnCheckToken) return;
             photosBtn.disabled = !(Number(count) > 0);

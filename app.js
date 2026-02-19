@@ -1,4 +1,4 @@
-const APP_VERSION = "5.21.1";
+const APP_VERSION = "5.21.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1107,44 +1107,58 @@ function setSettingsPage(page) {
 // Settings: Objektum típusa (v5.21)
 // ---------------------------
 
-// Több választható szín (később ezekből kapja a marker a színét)
-// A régi (leaflet-color-markers) kódok is benne maradtak kompatibilitás miatt.
+// Választható marker-színek (pontosan 30 db, 2-3 árnyalat / alapszín)
+// Megjegyzés: a korábbi "régi" (leaflet-color-markers) kódokat kivettük.
 const OBJECT_TYPE_COLORS = [
-  // régi kódok
-  { code: "green", label: "Zöld (régi)" },
-  { code: "blue", label: "Kék (régi)" },
-  { code: "yellow", label: "Sárga (régi)" },
-  { code: "red", label: "Piros (régi)" },
-  { code: "orange", label: "Narancs (régi)" },
-  { code: "violet", label: "Lila (régi)" },
-  { code: "grey", label: "Szürke (régi)" },
-  { code: "black", label: "Fekete (régi)" },
-
-  // bővített paletta (HEX)
+  // Zöld
   { code: "#22c55e", label: "Zöld" },
-  { code: "#16a34a", label: "Sötétzöld" },
-  { code: "#84cc16", label: "Lime" },
+  { code: "#16a34a", label: "Zöld (sötét)" },
+  { code: "#15803d", label: "Zöld (nagyon sötét)" },
+
+  // Türkiz / Teal
   { code: "#14b8a6", label: "Türkiz" },
+  { code: "#0d9488", label: "Türkiz (sötét)" },
+  { code: "#0f766e", label: "Türkiz (nagyon sötét)" },
+
+  // Cián
   { code: "#06b6d4", label: "Cián" },
+  { code: "#0891b2", label: "Cián (sötét)" },
+  { code: "#0e7490", label: "Cián (nagyon sötét)" },
+
+  // Kék
   { code: "#3b82f6", label: "Kék" },
-  { code: "#1d4ed8", label: "Sötétkék" },
+  { code: "#2563eb", label: "Kék (sötét)" },
+  { code: "#1d4ed8", label: "Kék (nagyon sötét)" },
+
+  // Indigó
   { code: "#6366f1", label: "Indigó" },
+  { code: "#4f46e5", label: "Indigó (sötét)" },
+  { code: "#4338ca", label: "Indigó (nagyon sötét)" },
+
+  // Lila / Violet
   { code: "#8b5cf6", label: "Lila" },
-  { code: "#a855f7", label: "Ibolya" },
+  { code: "#7c3aed", label: "Lila (sötét)" },
+  { code: "#6d28d9", label: "Lila (nagyon sötét)" },
+
+  // Rózsaszín
   { code: "#ec4899", label: "Rózsaszín" },
-  { code: "#f43f5e", label: "Málna" },
+  { code: "#db2777", label: "Rózsaszín (sötét)" },
+  { code: "#be185d", label: "Rózsaszín (nagyon sötét)" },
+
+  // Piros
   { code: "#ef4444", label: "Piros" },
-  { code: "#b91c1c", label: "Sötétpiros" },
+  { code: "#dc2626", label: "Piros (sötét)" },
+  { code: "#b91c1c", label: "Piros (nagyon sötét)" },
+
+  // Narancs
   { code: "#f97316", label: "Narancs" },
-  { code: "#fb923c", label: "Világos narancs" },
+  { code: "#ea580c", label: "Narancs (sötét)" },
+  { code: "#c2410c", label: "Narancs (nagyon sötét)" },
+
+  // Borostyán (Amber)
   { code: "#f59e0b", label: "Borostyán" },
-  { code: "#eab308", label: "Sárga" },
-  { code: "#0ea5e9", label: "Világoskék" },
-  { code: "#64748b", label: "Kékesszürke" },
-  { code: "#6b7280", label: "Szürke" },
-  { code: "#111827", label: "Fekete" },
-  { code: "#a16207", label: "Barna" },
-  { code: "#ffffff", label: "Fehér" }
+  { code: "#d97706", label: "Borostyán (sötét)" },
+  { code: "#b45309", label: "Borostyán (nagyon sötét)" }
 ];
 
 let _objectTypesCache = [];

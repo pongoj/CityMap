@@ -160,6 +160,15 @@
       background: #fff;
     }
 
+    /* v5.21: Objektum típusa táblázat scroll (függőleges + vízszintes) */
+    #settingsModal .settings-table-wrap{
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: #fff;
+    }
+
     @media (max-width: 720px){
       #settingsModal .settings-shell{ flex-direction: column; }
       #settingsModal .settings-nav{ width: auto; border-right: 0; border-bottom: 1px solid #e5e7eb; flex-direction: row; }
@@ -372,6 +381,7 @@
         <div class="settings-content" id="settingsContent">
           <h3 id="settingsTitle" style="margin:0 0 10px 0;">Objektum típusa</h3>
           <div class="small" id="settingsHint">Itt később a típusok kezelése (adatbázis, színek, bővítés/módosítás) lesz elérhető.</div>
+          <div id="settingsExtra"></div>
         </div>
       </div>
     </div>

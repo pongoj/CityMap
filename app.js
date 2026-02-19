@@ -1,4 +1,4 @@
-const APP_VERSION = "5.20.0";
+const APP_VERSION = "5.21.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1081,22 +1081,212 @@ function closeSettingsModal() {
 function setSettingsPage(page) {
   const titleEl = document.getElementById("settingsTitle");
   const hintEl = document.getElementById("settingsHint");
+  const contentEl = document.getElementById("settingsContent");
   const navItems = Array.from(document.querySelectorAll("#settingsModal .settings-nav-item"));
 
   navItems.forEach((b) => b.classList.toggle("active", b.dataset.page === page));
 
-  if (!titleEl || !hintEl) return;
+  if (!titleEl || !hintEl || !contentEl) return;
 
   if (page === "status") {
     titleEl.textContent = "Objektum állapota";
     hintEl.textContent = "Itt később az állapotok kezelése (adatbázis, színek, bővítés/módosítás) lesz elérhető.";
+    renderSettingsPlaceholderPage();
   } else if (page === "users") {
     titleEl.textContent = "Felhasználó kezelés";
     hintEl.textContent = "Itt később a felhasználók kezelése (jogosultságok, admin, felvivő stb.) lesz elérhető.";
+    renderSettingsPlaceholderPage();
   } else {
     titleEl.textContent = "Objektum típusa";
-    hintEl.textContent = "Itt később a típusok kezelése (adatbázis, színek, bővítés/módosítás) lesz elérhető.";
+    hintEl.textContent = "Típusok kezelése (helyi adatbázis / IndexedDB).";
+    renderSettingsObjectTypesPage();
   }
+}
+
+// ---------------------------
+// Settings: Objektum típusa (v5.21)
+// ---------------------------
+
+const OBJECT_TYPE_COLORS = [
+  { code: "green", label: "Zöld" },
+  { code: "blue", label: "Kék" },
+  { code: "yellow", label: "Sárga" },
+  { code: "red", label: "Piros" },
+  { code: "orange", label: "Narancs" },
+  { code: "violet", label: "Lila" },
+  { code: "grey", label: "Szürke" },
+  { code: "black", label: "Fekete" }
+];
+
+let _objectTypesCache = [];
+let _objectTypesUiWired = false;
+
+function renderSettingsPlaceholderPage() {
+  const container = document.getElementById("settingsExtra");
+  if (!container) return;
+  container.innerHTML = "";
+}
+
+function renderSettingsObjectTypesPage() {
+  const container = document.getElementById("settingsExtra");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div class="small" style="color:#666;">Oszlopok: Azonosító, Belső azonosító, Típus, Leírás, Szín</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-save" id="btnAddObjectType" type="button">Új sor</button>
+      </div>
+    </div>
+
+    <div class="settings-table-wrap" style="margin-top:10px;">
+      <table class="sf-table" id="objectTypesTable" style="min-width:900px;">
+        <thead>
+          <tr>
+            <th style="width:120px;">Azonosító</th>
+            <th style="width:160px;">Belső azonosító</th>
+            <th style="width:220px;">Típus *</th>
+            <th style="width:260px;">Leírás</th>
+            <th style="width:140px;">Szín</th>
+          </tr>
+        </thead>
+        <tbody id="objectTypesTbody"></tbody>
+      </table>
+    </div>
+  `;
+
+  if (!_objectTypesUiWired) {
+    _objectTypesUiWired = true;
+    const addBtn = document.getElementById("btnAddObjectType");
+    if (addBtn) {
+      addBtn.addEventListener("click", async () => {
+        await DB.init();
+        const newRec = {
+          internalId: "",
+          type: "",
+          description: "",
+          color: "green",
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        const id = await DB.addObjectType(newRec);
+        showHint("Új sor létrehozva.");
+        await loadAndRenderObjectTypes({ focusId: id });
+      });
+    }
+
+    // delegált eseménykezelés (minden input/select)
+    container.addEventListener("input", (e) => {
+      const tr = e.target.closest("tr[data-ot-id]");
+      if (!tr) return;
+      markRowDirty(tr);
+    });
+    container.addEventListener("change", async (e) => {
+      const tr = e.target.closest("tr[data-ot-id]");
+      if (!tr) return;
+      await saveObjectTypeRow(tr);
+    });
+    container.addEventListener("blur", async (e) => {
+      const tr = e.target.closest("tr[data-ot-id]");
+      if (!tr) return;
+      await saveObjectTypeRow(tr);
+    }, true);
+    container.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-action='delete-ot']");
+      if (!btn) return;
+      const tr = btn.closest("tr[data-ot-id]");
+      if (!tr) return;
+      const id = Number(tr.dataset.otId);
+      if (!Number.isFinite(id)) return;
+      if (!confirm("Biztosan törlöd ezt a típust?")) return;
+      await DB.deleteObjectType(id);
+      showHint("Típus törölve.");
+      await loadAndRenderObjectTypes();
+    });
+  }
+
+  loadAndRenderObjectTypes();
+}
+
+function markRowDirty(tr) {
+  tr.dataset.dirty = "1";
+}
+
+function readObjectTypeRow(tr) {
+  const id = Number(tr.dataset.otId);
+  const internalId = (tr.querySelector("input[data-field='internalId']")?.value || "").trim();
+  const type = (tr.querySelector("input[data-field='type']")?.value || "").trim();
+  const description = (tr.querySelector("input[data-field='description']")?.value || "").trim();
+  const color = tr.querySelector("select[data-field='color']")?.value || "green";
+  return { id, internalId, type, description, color };
+}
+
+function validateObjectType(rec) {
+  if (rec.internalId && rec.internalId.length > 10) return "A 'Belső azonosító' max 10 karakter.";
+  if (!rec.type) return "A 'Típus' mező kötelező.";
+  if (rec.type.length > 30) return "A 'Típus' max 30 karakter.";
+  if (rec.description && rec.description.length > 50) return "A 'Leírás' max 50 karakter.";
+  return null;
+}
+
+async function saveObjectTypeRow(tr) {
+  const isDirty = tr.dataset.dirty === "1";
+  if (!isDirty) return;
+
+  const rec = readObjectTypeRow(tr);
+  const err = validateObjectType(rec);
+  if (err) {
+    showHint(err);
+    return;
+  }
+
+  await DB.init();
+  await DB.updateObjectType(rec.id, {
+    internalId: rec.internalId,
+    type: rec.type,
+    description: rec.description,
+    color: rec.color,
+    updatedAt: Date.now()
+  });
+  tr.dataset.dirty = "0";
+}
+
+async function loadAndRenderObjectTypes(opts = {}) {
+  await DB.init();
+  _objectTypesCache = await DB.getAllObjectTypes();
+  renderObjectTypesTable();
+  if (opts.focusId) {
+    const row = document.querySelector(`#objectTypesTbody tr[data-ot-id='${opts.focusId}'] input[data-field='type']`);
+    if (row) row.focus();
+  }
+}
+
+function renderObjectTypesTable() {
+  const tb = document.getElementById("objectTypesTbody");
+  if (!tb) return;
+  tb.innerHTML = "";
+
+  _objectTypesCache.forEach((rec) => {
+    const tr = document.createElement("tr");
+    tr.dataset.otId = rec.id;
+    tr.innerHTML = `
+      <td>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <span>${escapeHtml(rec.id)}</span>
+          <button class="btn btn-ghost" type="button" data-action="delete-ot" style="padding:4px 8px;">🗑</button>
+        </div>
+      </td>
+      <td><input data-field="internalId" type="text" maxlength="10" value="${escapeHtml(rec.internalId || "")}" style="width:100%;"/></td>
+      <td><input data-field="type" type="text" maxlength="30" value="${escapeHtml(rec.type || "")}" style="width:100%;" placeholder="pl. Pad"/></td>
+      <td><input data-field="description" type="text" maxlength="50" value="${escapeHtml(rec.description || "")}" style="width:100%;"/></td>
+      <td>
+        <select data-field="color" style="width:100%;">
+          ${OBJECT_TYPE_COLORS.map(c => `<option value="${c.code}" ${String(rec.color||"green")===c.code?"selected":""}>${c.label}</option>`).join("")}
+        </select>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
 }
 
 

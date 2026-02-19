@@ -1,6 +1,7 @@
 const DB_NAME = "citymap-db";
 // v5.11: photos stored locally (IndexedDB) and linked to marker uuid
-const DB_VERSION = 3;
+// v5.21: object types stored in IndexedDB (settings)
+const DB_VERSION = 4;
 
 const DB = {
   _db: null,
@@ -40,6 +41,13 @@ const DB = {
         // Felhasználók (később)
         if (!db.objectStoreNames.contains("users")) {
           db.createObjectStore("users", { keyPath: "username" });
+        }
+
+        // Objektum típusok (Beállítások / Objektum típusa) - v5.21
+        if (!db.objectStoreNames.contains("objectTypes")) {
+          const ot = db.createObjectStore("objectTypes", { keyPath: "id", autoIncrement: true });
+          ot.createIndex("by_internalId", "internalId", { unique: false });
+          ot.createIndex("by_type", "type", { unique: false });
         }
       };
 
@@ -279,6 +287,61 @@ const DB = {
     return new Promise((resolve, reject) => {
       const s = this._store("lookups", "readwrite");
       const r = s.put({ key, values });
+      r.onsuccess = () => resolve(true);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
+  // ---------------------------
+  // Objektum típusok (v5.21)
+  // ---------------------------
+
+  getAllObjectTypes() {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectTypes", "readonly");
+      const req = s.openCursor();
+      const out = [];
+      req.onsuccess = (ev) => {
+        const cur = ev.target.result;
+        if (!cur) {
+          out.sort((a, b) => (a.id || 0) - (b.id || 0));
+          return resolve(out);
+        }
+        out.push({ id: cur.primaryKey, ...cur.value });
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  addObjectType(rec) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectTypes", "readwrite");
+      const r = s.add(rec);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
+  updateObjectType(id, patch) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectTypes", "readwrite");
+      const g = s.get(id);
+      g.onsuccess = () => {
+        const cur = g.result;
+        if (!cur) return resolve(false);
+        const put = s.put({ ...cur, ...patch });
+        put.onsuccess = () => resolve(true);
+        put.onerror = () => reject(put.error);
+      };
+      g.onerror = () => reject(g.error);
+    });
+  },
+
+  deleteObjectType(id) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectTypes", "readwrite");
+      const r = s.delete(id);
       r.onsuccess = () => resolve(true);
       r.onerror = () => reject(r.error);
     });

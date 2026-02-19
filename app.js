@@ -1,4 +1,4 @@
-const APP_VERSION = "5.22.1";
+const APP_VERSION = "5.23.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1169,7 +1169,9 @@ const OBJECT_TYPE_COLORS = [
 
 let _colorPickerPopover = null;
 let _colorPickerTargetInput = null; // az aktuálisan szerkesztett (rejtett) input
-let _nativeColorInput = null; // natív <input type=color> (Edge-nél showPicker-rel)
+// Megjegyzés: a natív color picker (input[type=color]) Edge-en laptopon sokszor nem nyílik meg
+// megbízhatóan (user-gesture / fókusz / rejtettség függő). Ezért "További színek..." esetén
+// saját (Excel-jellegű) dialógust használunk.
 
 function ensureColorPickerPopover() {
   if (_colorPickerPopover) return _colorPickerPopover;
@@ -1216,31 +1218,16 @@ function ensureColorPickerPopover() {
   moreBtn.style.padding = "8px 10px";
   moreBtn.textContent = "További színek...";
 
-  // Natív színválasztó (Excel "További színek..." jelleg)
-  // Megjegyzés: egyes böngészők (pl. Edge) nem mindig nyitják meg a color pickert,
-  // ha az input "túl rejtett". Ezért body-ra tesszük és showPicker()-t használunk, ha elérhető.
-  if (!_nativeColorInput) {
-    _nativeColorInput = document.createElement("input");
-    _nativeColorInput.type = "color";
-    _nativeColorInput.className = "color-native";
-    document.body.appendChild(_nativeColorInput);
-    _nativeColorInput.addEventListener("input", () => {
-      if (!_colorPickerTargetInput) return;
-      _colorPickerTargetInput.value = _nativeColorInput.value;
-      _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-  }
-
   moreBtn.addEventListener("click", () => {
-    if (_colorPickerTargetInput && /^#([0-9a-fA-F]{6})$/.test(_colorPickerTargetInput.value)) {
-      _nativeColorInput.value = _colorPickerTargetInput.value;
-    }
-    // közvetlen user-gesture alatt próbáljuk megnyitni
-    if (typeof _nativeColorInput.showPicker === "function") {
-      _nativeColorInput.showPicker();
-    } else {
-      _nativeColorInput.click();
-    }
+    if (!_colorPickerTargetInput) return;
+    const start = /^#([0-9a-fA-F]{6})$/.test(_colorPickerTargetInput.value)
+      ? _colorPickerTargetInput.value
+      : "#3b82f6";
+    openExcelLikeColorDialog(start, (hex) => {
+      _colorPickerTargetInput.value = hex;
+      _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
+      closeColorPicker();
+    });
   });
 
   footer.appendChild(moreBtn);
@@ -1284,6 +1271,255 @@ function openColorPicker(anchorBtn, targetInput) {
 function closeColorPicker() {
   if (_colorPickerPopover) _colorPickerPopover.style.display = "none";
   _colorPickerTargetInput = null;
+}
+
+// ---------------------------
+// "Excel-szerű" (saját) szín dialógus – natív picker helyett
+// Cél: Edge laptopon is működjön megbízhatóan.
+// ---------------------------
+
+let _excelColorDialog = null;
+let _excelColorDialogOnOk = null;
+let _excelColorDialogInitial = "#ffffff";
+let _excelColorDialogValue = "#ffffff";
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function hexToRgb(hex) {
+  const m = String(hex).trim().match(/^#([0-9a-fA-F]{6})$/);
+  if (!m) return { r: 255, g: 255, b: 255 };
+  const v = parseInt(m[1], 16);
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+
+function rgbToHex(r, g, b) {
+  const to2 = (x) => clamp(Math.round(x), 0, 255).toString(16).padStart(2, "0");
+  return `#${to2(r)}${to2(g)}${to2(b)}`;
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  s = clamp(s, 0, 100) / 100;
+  l = clamp(l, 0, 100) / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r1 = 0, g1 = 0, b1 = 0;
+  if (h < 60) { r1 = c; g1 = x; b1 = 0; }
+  else if (h < 120) { r1 = x; g1 = c; b1 = 0; }
+  else if (h < 180) { r1 = 0; g1 = c; b1 = x; }
+  else if (h < 240) { r1 = 0; g1 = x; b1 = c; }
+  else if (h < 300) { r1 = x; g1 = 0; b1 = c; }
+  else { r1 = c; g1 = 0; b1 = x; }
+  return {
+    r: (r1 + m) * 255,
+    g: (g1 + m) * 255,
+    b: (b1 + m) * 255
+  };
+}
+
+function ensureExcelLikeColorDialog() {
+  if (_excelColorDialog) return _excelColorDialog;
+
+  const overlay = document.createElement("div");
+  overlay.id = "excelColorDialog";
+  overlay.className = "excel-color-overlay";
+  overlay.style.display = "none";
+
+  overlay.innerHTML = `
+    <div class="excel-color-dialog" role="dialog" aria-modal="true">
+      <div class="excel-color-titlebar">
+        <div class="excel-color-title">Színek</div>
+        <button class="excel-color-x" type="button" aria-label="Bezár">×</button>
+      </div>
+
+      <div class="excel-color-body">
+        <div class="excel-color-tabs">
+          <button type="button" class="excel-tab is-active" data-tab="standard">Szokásos</button>
+          <button type="button" class="excel-tab" data-tab="custom">Egyéni</button>
+        </div>
+
+        <div class="excel-color-panels">
+          <div class="excel-panel" data-panel="standard">
+            <div class="excel-swatch-grid" id="excelStandardGrid"></div>
+            <div class="excel-hint">Kattints egy színre, vagy válts az „Egyéni” fülre.</div>
+          </div>
+
+          <div class="excel-panel" data-panel="custom" style="display:none;">
+            <div class="excel-custom-layout">
+              <div class="excel-sliders">
+                <label>Színárnyalat (Hue)
+                  <input type="range" min="0" max="360" value="210" id="excelHue" />
+                </label>
+                <label>Telítettség (Saturation)
+                  <input type="range" min="0" max="100" value="70" id="excelSat" />
+                </label>
+                <label>Világosság (Lightness)
+                  <input type="range" min="0" max="100" value="50" id="excelLight" />
+                </label>
+
+                <label>HEX
+                  <input type="text" maxlength="7" placeholder="#RRGGBB" id="excelHex" />
+                </label>
+              </div>
+
+              <div class="excel-preview">
+                <div class="excel-preview-box">
+                  <div class="excel-preview-swatch" id="excelNewSwatch"></div>
+                  <div class="excel-preview-label">Új</div>
+                </div>
+                <div class="excel-preview-box">
+                  <div class="excel-preview-swatch" id="excelOldSwatch"></div>
+                  <div class="excel-preview-label">Jelenlegi</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="excel-color-actions">
+        <button type="button" class="btn" id="excelCancel">Mégse</button>
+        <button type="button" class="btn btn-save" id="excelOk">OK</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const dlg = overlay;
+  const xBtn = dlg.querySelector(".excel-color-x");
+  const okBtn = dlg.querySelector("#excelOk");
+  const cancelBtn = dlg.querySelector("#excelCancel");
+
+  function closeDialog() {
+    dlg.style.display = "none";
+    _excelColorDialogOnOk = null;
+  }
+
+  xBtn.addEventListener("click", closeDialog);
+  cancelBtn.addEventListener("click", closeDialog);
+  dlg.addEventListener("click", (e) => {
+    if (e.target === dlg) closeDialog();
+  });
+
+  okBtn.addEventListener("click", () => {
+    if (typeof _excelColorDialogOnOk === "function") {
+      _excelColorDialogOnOk(_excelColorDialogValue);
+    }
+    closeDialog();
+  });
+
+  // Tabs
+  dlg.querySelectorAll(".excel-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      dlg.querySelectorAll(".excel-tab").forEach(b => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      const tab = btn.dataset.tab;
+      dlg.querySelectorAll(".excel-panel").forEach(p => p.style.display = "none");
+      dlg.querySelector(`.excel-panel[data-panel='${tab}']`).style.display = "block";
+    });
+  });
+
+  // Standard grid (Excel-szerű alap színek) – 10x5 (50), de a mi célunkhoz elég egy „könnyű” lista.
+  const standardColors = [
+    "#000000", "#1f2937", "#6b7280", "#9ca3af", "#d1d5db",
+    "#ffffff", "#ef4444", "#f97316", "#f59e0b", "#84cc16",
+    "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#6366f1",
+    "#8b5cf6", "#a855f7", "#ec4899", "#f43f5e", "#7f1d1d",
+    "#9a3412", "#92400e", "#3f6212", "#14532d", "#064e3b",
+    "#0e7490", "#1d4ed8", "#1e3a8a", "#4c1d95", "#701a75"
+  ];
+  const grid = dlg.querySelector("#excelStandardGrid");
+  grid.innerHTML = "";
+  standardColors.forEach(hex => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "excel-swatch";
+    b.style.background = hex;
+    b.title = hex;
+    b.addEventListener("click", () => {
+      setDialogColor(hex, { updateSliders: true });
+    });
+    grid.appendChild(b);
+  });
+
+  const hue = dlg.querySelector("#excelHue");
+  const sat = dlg.querySelector("#excelSat");
+  const light = dlg.querySelector("#excelLight");
+  const hexInput = dlg.querySelector("#excelHex");
+
+  function setDialogColor(hex, opts = {}) {
+    const clean = /^#([0-9a-fA-F]{6})$/.test(hex) ? hex.toLowerCase() : _excelColorDialogValue;
+    _excelColorDialogValue = clean;
+    dlg.querySelector("#excelNewSwatch").style.background = clean;
+    hexInput.value = clean;
+
+    if (opts.updateSliders) {
+      const { r, g, b } = hexToRgb(clean);
+      const hsl = rgbToHsl(r, g, b);
+      hue.value = String(Math.round(hsl.h));
+      sat.value = String(Math.round(hsl.s));
+      light.value = String(Math.round(hsl.l));
+    }
+  }
+
+  function syncFromSliders() {
+    const rgb = hslToRgb(Number(hue.value), Number(sat.value), Number(light.value));
+    setDialogColor(rgbToHex(rgb.r, rgb.g, rgb.b), { updateSliders: false });
+  }
+
+  [hue, sat, light].forEach(r => r.addEventListener("input", syncFromSliders));
+  hexInput.addEventListener("input", () => {
+    const v = hexInput.value.trim();
+    if (/^#([0-9a-fA-F]{6})$/.test(v)) setDialogColor(v, { updateSliders: true });
+  });
+
+  // API
+  overlay._setInitial = (hex) => {
+    _excelColorDialogInitial = /^#([0-9a-fA-F]{6})$/.test(hex) ? hex.toLowerCase() : "#ffffff";
+    dlg.querySelector("#excelOldSwatch").style.background = _excelColorDialogInitial;
+    setDialogColor(_excelColorDialogInitial, { updateSliders: true });
+  };
+
+  _excelColorDialog = overlay;
+  return overlay;
+}
+
+function openExcelLikeColorDialog(initialHex, onOk) {
+  const dlg = ensureExcelLikeColorDialog();
+  _excelColorDialogOnOk = onOk;
+  dlg._setInitial(initialHex);
+
+  // alap fül: Szokásos
+  dlg.querySelectorAll(".excel-tab").forEach(b => b.classList.remove("is-active"));
+  dlg.querySelector(".excel-tab[data-tab='standard']").classList.add("is-active");
+  dlg.querySelectorAll(".excel-panel").forEach(p => p.style.display = "none");
+  dlg.querySelector(".excel-panel[data-panel='standard']").style.display = "block";
+
+  dlg.style.display = "flex";
 }
 
 let _objectTypesCache = [];

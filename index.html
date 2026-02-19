@@ -227,6 +227,96 @@
     .color-footer{ display:flex; justify-content:flex-start; gap:10px; margin-top: 10px; align-items:center; }
     .color-native{ position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
 
+    /* v5.23.0: Excel-szerű "Színek" dialógus (natív picker helyett) */
+    .excel-color-overlay{
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.35);
+      z-index: 4500;
+      padding: 14px;
+    }
+    .excel-color-dialog{
+      width: min(640px, 96vw);
+      background:#fff;
+      border-radius: 14px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+    }
+    .excel-color-titlebar{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      background:#f9fafb;
+    }
+    .excel-color-title{ font-weight: 800; }
+    .excel-color-x{
+      width: 32px; height: 32px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      background:#fff;
+      cursor:pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .excel-color-body{ padding: 12px; }
+    .excel-color-tabs{ display:flex; gap:8px; margin-bottom: 12px; }
+    .excel-tab{
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      background:#fff;
+      cursor:pointer;
+      font-weight: 700;
+    }
+    .excel-tab.is-active{ background:#111827; color:#fff; border-color:#111827; }
+    .excel-swatch-grid{
+      display:grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background:#f9fafb;
+    }
+    .excel-swatch{
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,.18);
+      cursor: pointer;
+    }
+    .excel-swatch:hover{ outline: 2px solid rgba(17,24,39,.35); }
+    .excel-hint{ margin-top: 10px; font-size: 12px; color:#6b7280; }
+    .excel-custom-layout{ display:flex; gap:14px; align-items: stretch; }
+    .excel-sliders{ flex: 1 1 auto; min-width: 280px; }
+    .excel-sliders label{ margin-top: 8px; }
+    .excel-sliders input[type=range]{ width: 100%; margin-top: 6px; }
+    .excel-sliders input[type=text]{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .excel-preview{ width: 180px; display:flex; flex-direction: column; gap:10px; }
+    .excel-preview-box{ display:flex; align-items:center; gap:10px; }
+    .excel-preview-swatch{ width: 80px; height: 60px; border-radius: 12px; border: 1px solid rgba(0,0,0,.18); background:#fff; }
+    .excel-preview-label{ font-size: 12px; color:#6b7280; font-weight: 700; }
+    .excel-color-actions{
+      display:flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid #e5e7eb;
+      background:#f9fafb;
+    }
+
+    @media (max-width: 560px){
+      .excel-custom-layout{ flex-direction: column; }
+      .excel-preview{ width: auto; flex-direction: row; }
+      .excel-preview-swatch{ width: 70px; height: 54px; }
+    }
+
     @media (max-width: 720px){
       #settingsModal .settings-shell{ flex-direction: column; }
       #settingsModal .settings-nav{ width: auto; border-right: 0; border-bottom: 1px solid #e5e7eb; flex-direction: row; }

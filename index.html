@@ -182,6 +182,51 @@
       background: #fff;
     }
 
+    /* v5.22.0: Excel-szerű színválasztó (popover) */
+    .color-cell{ display:flex; align-items:center; justify-content:flex-start; }
+    .color-btn{
+      display:flex; align-items:center; gap:8px;
+      width: 100%;
+      border:1px solid #d1d5db;
+      border-radius: 12px;
+      padding: 8px 10px;
+      background:#fff;
+      cursor:pointer;
+      font-weight: 700;
+    }
+    .color-btn:hover{ background:#f9fafb; }
+    .color-dot{ width:18px; height:18px; border-radius: 6px; border:1px solid rgba(0,0,0,.15); flex: 0 0 auto; }
+    .color-hex{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color:#111827; }
+
+    .color-popover{
+      position: absolute;
+      z-index: 4000;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      box-shadow: 0 12px 28px rgba(0,0,0,.22);
+      padding: 10px;
+      min-width: 320px;
+    }
+    .color-grid{
+      display:grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 6px;
+      padding: 6px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background:#f9fafb;
+    }
+    .color-swatch{
+      width: 26px; height: 22px;
+      border-radius: 6px;
+      border: 1px solid rgba(0,0,0,.18);
+      cursor:pointer;
+    }
+    .color-swatch:hover{ outline: 2px solid rgba(17,24,39,.35); }
+    .color-footer{ display:flex; justify-content:flex-start; gap:10px; margin-top: 10px; align-items:center; }
+    .color-native{ position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
+
     @media (max-width: 720px){
       #settingsModal .settings-shell{ flex-direction: column; }
       #settingsModal .settings-nav{ width: auto; border-right: 0; border-bottom: 1px solid #e5e7eb; flex-direction: row; }

@@ -1,4 +1,4 @@
-const APP_VERSION = "5.21.2";
+const APP_VERSION = "5.22.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1161,6 +1161,120 @@ const OBJECT_TYPE_COLORS = [
   { code: "#b45309", label: "Borostyán (nagyon sötét)" }
 ];
 
+// ---------------------------
+// Excel-szerű színválasztó (v5.22.0)
+// - 30 szín: 10 oszlop x 3 árnyalat
+// - "További színek...": natív color picker
+// ---------------------------
+
+let _colorPickerPopover = null;
+let _colorPickerTargetInput = null; // az aktuálisan szerkesztett (rejtett) input
+
+function ensureColorPickerPopover() {
+  if (_colorPickerPopover) return _colorPickerPopover;
+
+  const pop = document.createElement("div");
+  pop.id = "colorPickerPopover";
+  pop.className = "color-popover";
+  pop.style.display = "none";
+
+  // 10 oszlop x 3 sor (10 alapszín, 3 árnyalat)
+  const grid = document.createElement("div");
+  grid.className = "color-grid";
+
+  const cols = [];
+  for (let i = 0; i < OBJECT_TYPE_COLORS.length; i += 3) {
+    cols.push(OBJECT_TYPE_COLORS.slice(i, i + 3));
+  }
+  // render: soronként (3 sor), oszloponként (10)
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < cols.length; c++) {
+      const item = cols[c][r];
+      const sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "color-swatch";
+      sw.title = `${item.label} (${item.code})`;
+      sw.style.background = item.code;
+      sw.dataset.hex = item.code;
+      sw.addEventListener("click", () => {
+        if (!_colorPickerTargetInput) return;
+        _colorPickerTargetInput.value = item.code;
+        _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
+        closeColorPicker();
+      });
+      grid.appendChild(sw);
+    }
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "color-footer";
+
+  const moreBtn = document.createElement("button");
+  moreBtn.type = "button";
+  moreBtn.className = "btn btn-ghost";
+  moreBtn.style.padding = "8px 10px";
+  moreBtn.textContent = "További színek...";
+
+  const native = document.createElement("input");
+  native.type = "color";
+  native.className = "color-native";
+  native.addEventListener("input", () => {
+    if (!_colorPickerTargetInput) return;
+    _colorPickerTargetInput.value = native.value;
+    _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  moreBtn.addEventListener("click", () => {
+    if (_colorPickerTargetInput && /^#([0-9a-fA-F]{6})$/.test(_colorPickerTargetInput.value)) {
+      native.value = _colorPickerTargetInput.value;
+    }
+    native.click();
+  });
+
+  footer.appendChild(moreBtn);
+  footer.appendChild(native);
+
+  pop.appendChild(grid);
+  pop.appendChild(footer);
+  document.body.appendChild(pop);
+
+  // kattintás a popoveren kívül: zárás
+  document.addEventListener("click", (e) => {
+    if (!_colorPickerPopover || _colorPickerPopover.style.display === "none") return;
+    const inPopover = e.target.closest("#colorPickerPopover");
+    const inBtn = e.target.closest(".color-btn");
+    if (!inPopover && !inBtn) closeColorPicker();
+  });
+
+  _colorPickerPopover = pop;
+  return pop;
+}
+
+function openColorPicker(anchorBtn, targetInput) {
+  const pop = ensureColorPickerPopover();
+  _colorPickerTargetInput = targetInput;
+
+  const rect = anchorBtn.getBoundingClientRect();
+  pop.style.display = "block";
+
+  const popRect = pop.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  if (left + popRect.width > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - popRect.width - 8);
+  }
+  if (top + popRect.height > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - popRect.height - 6);
+  }
+  pop.style.left = `${left + window.scrollX}px`;
+  pop.style.top = `${top + window.scrollY}px`;
+}
+
+function closeColorPicker() {
+  if (_colorPickerPopover) _colorPickerPopover.style.display = "none";
+  _colorPickerTargetInput = null;
+}
+
 let _objectTypesCache = [];
 let _objectTypesUiWired = false;
 
@@ -1200,9 +1314,30 @@ function renderSettingsObjectTypesPage() {
 
   if (!_objectTypesUiWired) {
     _objectTypesUiWired = true;
-    const addBtn = document.getElementById("btnAddObjectType");
-    if (addBtn) {
-      addBtn.addEventListener("click", async () => {
+
+
+    // delegált eseménykezelés (minden input/select)
+    container.addEventListener("input", (e) => {
+      const tr = e.target.closest("tr[data-ot-id]");
+      if (!tr) return;
+      markRowDirty(tr);
+    });
+    container.addEventListener("change", async (e) => {
+      const tr = e.target.closest("tr[data-ot-id]");
+      if (!tr) return;
+      // pl. rejtett szín input csak change eseményt kap
+      markRowDirty(tr);
+      await saveObjectTypeRow(tr);
+    });
+    container.addEventListener("blur", async (e) => {
+      const tr = e.target.closest("tr[data-ot-id]");
+      if (!tr) return;
+      await saveObjectTypeRow(tr);
+    }, true);
+    container.addEventListener("click", async (e) => {
+      // Új sor (delegált, mert a jobb oldal újrarenderelődik lapváltáskor)
+      const addBtn = e.target.closest("#btnAddObjectType");
+      if (addBtn) {
         await DB.init();
         const newRec = {
           internalId: "",
@@ -1215,36 +1350,33 @@ function renderSettingsObjectTypesPage() {
         const id = await DB.addObjectType(newRec);
         showHint("Új sor létrehozva.");
         await loadAndRenderObjectTypes({ focusId: id });
-      });
-    }
+        return;
+      }
 
-    // delegált eseménykezelés (minden input/select)
-    container.addEventListener("input", (e) => {
-      const tr = e.target.closest("tr[data-ot-id]");
-      if (!tr) return;
-      markRowDirty(tr);
-    });
-    container.addEventListener("change", async (e) => {
-      const tr = e.target.closest("tr[data-ot-id]");
-      if (!tr) return;
-      await saveObjectTypeRow(tr);
-    });
-    container.addEventListener("blur", async (e) => {
-      const tr = e.target.closest("tr[data-ot-id]");
-      if (!tr) return;
-      await saveObjectTypeRow(tr);
-    }, true);
-    container.addEventListener("click", async (e) => {
+      // Sor törlése
       const btn = e.target.closest("button[data-action='delete-ot']");
-      if (!btn) return;
-      const tr = btn.closest("tr[data-ot-id]");
-      if (!tr) return;
-      const id = Number(tr.dataset.otId);
-      if (!Number.isFinite(id)) return;
-      if (!confirm("Biztosan törlöd ezt a típust?")) return;
-      await DB.deleteObjectType(id);
-      showHint("Típus törölve.");
-      await loadAndRenderObjectTypes();
+      if (btn) {
+        const tr = btn.closest("tr[data-ot-id]");
+        if (!tr) return;
+        const id = Number(tr.dataset.otId);
+        if (!Number.isFinite(id)) return;
+        if (!confirm("Biztosan törlöd ezt a típust?")) return;
+        await DB.deleteObjectType(id);
+        showHint("Típus törölve.");
+        await loadAndRenderObjectTypes();
+        return;
+      }
+
+      // Szín gomb
+      const colorBtn = e.target.closest("button.color-btn");
+      if (colorBtn) {
+        const tr = colorBtn.closest("tr[data-ot-id]");
+        if (!tr) return;
+        const input = tr.querySelector("input[data-field='color']");
+        if (!input) return;
+        openColorPicker(colorBtn, input);
+        return;
+      }
     });
   }
 
@@ -1260,7 +1392,7 @@ function readObjectTypeRow(tr) {
   const internalId = (tr.querySelector("input[data-field='internalId']")?.value || "").trim();
   const type = (tr.querySelector("input[data-field='type']")?.value || "").trim();
   const description = (tr.querySelector("input[data-field='description']")?.value || "").trim();
-  const color = tr.querySelector("select[data-field='color']")?.value || "#22c55e";
+  const color = tr.querySelector("input[data-field='color']")?.value || "#22c55e";
   return { id, internalId, type, description, color };
 }
 
@@ -1323,34 +1455,29 @@ function renderObjectTypesTable() {
       <td><input data-field="type" type="text" maxlength="30" value="${escapeHtml(rec.type || "")}" style="width:100%;" placeholder="pl. Pad"/></td>
       <td><input data-field="description" type="text" maxlength="50" value="${escapeHtml(rec.description || "")}" style="width:100%;"/></td>
       <td>
-        <select data-field="color" style="width:100%;">
-          ${OBJECT_TYPE_COLORS.map(c => `<option value="${c.code}" ${String(rec.color||"#22c55e")===c.code?"selected":""}>${c.label}</option>`).join("")}
-        </select>
+        <div class="color-cell">
+          <button type="button" class="color-btn" title="Szín kiválasztása">
+            <span class="color-dot" style="background:${escapeHtml(String(rec.color || "#22c55e"))}"></span>
+            <span class="color-hex">${escapeHtml(String(rec.color || "#22c55e"))}</span>
+          </button>
+          <input data-field="color" type="hidden" value="${escapeHtml(String(rec.color || "#22c55e"))}" />
+        </div>
       </td>
     `;
     tb.appendChild(tr);
 
-    // kis szín-minta a lenyíló mezőn (ha HEX kód)
-    const sel = tr.querySelector("select[data-field='color']");
-    if (sel) {
+    // Szín UI frissítése (rejtett input -> gombon a dot + HEX)
+    const colorInput = tr.querySelector("input[data-field='color']");
+    const dot = tr.querySelector(".color-dot");
+    const hexLabel = tr.querySelector(".color-hex");
+    if (colorInput && dot && hexLabel) {
       const apply = () => {
-        const v = String(sel.value || "").trim();
-        if (v.startsWith("#") && v.length >= 4) {
-          sel.style.background = v;
-          // kontraszt: egyszerű luminancia becslés
-          const hex = v.replace("#", "");
-          const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.slice(0, 2), 16) || 0;
-          const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.slice(2, 4), 16) || 0;
-          const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.slice(4, 6), 16) || 0;
-          const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b);
-          sel.style.color = lum < 140 ? "#ffffff" : "#111827";
-        } else {
-          sel.style.background = "";
-          sel.style.color = "";
-        }
+        const v = String(colorInput.value || "#22c55e").trim();
+        dot.style.background = v;
+        hexLabel.textContent = v;
       };
       apply();
-      sel.addEventListener("change", apply);
+      colorInput.addEventListener("change", apply);
     }
   });
 }

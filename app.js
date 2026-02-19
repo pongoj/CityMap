@@ -1,4 +1,4 @@
-const APP_VERSION = "5.22.0";
+const APP_VERSION = "5.22.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1162,13 +1162,14 @@ const OBJECT_TYPE_COLORS = [
 ];
 
 // ---------------------------
-// Excel-szerű színválasztó (v5.22.0)
+// Excel-szerű színválasztó (v5.22.1)
 // - 30 szín: 10 oszlop x 3 árnyalat
 // - "További színek...": natív color picker
 // ---------------------------
 
 let _colorPickerPopover = null;
 let _colorPickerTargetInput = null; // az aktuálisan szerkesztett (rejtett) input
+let _nativeColorInput = null; // natív <input type=color> (Edge-nél showPicker-rel)
 
 function ensureColorPickerPopover() {
   if (_colorPickerPopover) return _colorPickerPopover;
@@ -1215,24 +1216,34 @@ function ensureColorPickerPopover() {
   moreBtn.style.padding = "8px 10px";
   moreBtn.textContent = "További színek...";
 
-  const native = document.createElement("input");
-  native.type = "color";
-  native.className = "color-native";
-  native.addEventListener("input", () => {
-    if (!_colorPickerTargetInput) return;
-    _colorPickerTargetInput.value = native.value;
-    _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  // Natív színválasztó (Excel "További színek..." jelleg)
+  // Megjegyzés: egyes böngészők (pl. Edge) nem mindig nyitják meg a color pickert,
+  // ha az input "túl rejtett". Ezért body-ra tesszük és showPicker()-t használunk, ha elérhető.
+  if (!_nativeColorInput) {
+    _nativeColorInput = document.createElement("input");
+    _nativeColorInput.type = "color";
+    _nativeColorInput.className = "color-native";
+    document.body.appendChild(_nativeColorInput);
+    _nativeColorInput.addEventListener("input", () => {
+      if (!_colorPickerTargetInput) return;
+      _colorPickerTargetInput.value = _nativeColorInput.value;
+      _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
 
   moreBtn.addEventListener("click", () => {
     if (_colorPickerTargetInput && /^#([0-9a-fA-F]{6})$/.test(_colorPickerTargetInput.value)) {
-      native.value = _colorPickerTargetInput.value;
+      _nativeColorInput.value = _colorPickerTargetInput.value;
     }
-    native.click();
+    // közvetlen user-gesture alatt próbáljuk megnyitni
+    if (typeof _nativeColorInput.showPicker === "function") {
+      _nativeColorInput.showPicker();
+    } else {
+      _nativeColorInput.click();
+    }
   });
 
   footer.appendChild(moreBtn);
-  footer.appendChild(native);
 
   pop.appendChild(grid);
   pop.appendChild(footer);

@@ -1,4 +1,4 @@
-const APP_VERSION = "5.21.0";
+const APP_VERSION = "5.21.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1107,15 +1107,44 @@ function setSettingsPage(page) {
 // Settings: Objektum típusa (v5.21)
 // ---------------------------
 
+// Több választható szín (később ezekből kapja a marker a színét)
+// A régi (leaflet-color-markers) kódok is benne maradtak kompatibilitás miatt.
 const OBJECT_TYPE_COLORS = [
-  { code: "green", label: "Zöld" },
-  { code: "blue", label: "Kék" },
-  { code: "yellow", label: "Sárga" },
-  { code: "red", label: "Piros" },
-  { code: "orange", label: "Narancs" },
-  { code: "violet", label: "Lila" },
-  { code: "grey", label: "Szürke" },
-  { code: "black", label: "Fekete" }
+  // régi kódok
+  { code: "green", label: "Zöld (régi)" },
+  { code: "blue", label: "Kék (régi)" },
+  { code: "yellow", label: "Sárga (régi)" },
+  { code: "red", label: "Piros (régi)" },
+  { code: "orange", label: "Narancs (régi)" },
+  { code: "violet", label: "Lila (régi)" },
+  { code: "grey", label: "Szürke (régi)" },
+  { code: "black", label: "Fekete (régi)" },
+
+  // bővített paletta (HEX)
+  { code: "#22c55e", label: "Zöld" },
+  { code: "#16a34a", label: "Sötétzöld" },
+  { code: "#84cc16", label: "Lime" },
+  { code: "#14b8a6", label: "Türkiz" },
+  { code: "#06b6d4", label: "Cián" },
+  { code: "#3b82f6", label: "Kék" },
+  { code: "#1d4ed8", label: "Sötétkék" },
+  { code: "#6366f1", label: "Indigó" },
+  { code: "#8b5cf6", label: "Lila" },
+  { code: "#a855f7", label: "Ibolya" },
+  { code: "#ec4899", label: "Rózsaszín" },
+  { code: "#f43f5e", label: "Málna" },
+  { code: "#ef4444", label: "Piros" },
+  { code: "#b91c1c", label: "Sötétpiros" },
+  { code: "#f97316", label: "Narancs" },
+  { code: "#fb923c", label: "Világos narancs" },
+  { code: "#f59e0b", label: "Borostyán" },
+  { code: "#eab308", label: "Sárga" },
+  { code: "#0ea5e9", label: "Világoskék" },
+  { code: "#64748b", label: "Kékesszürke" },
+  { code: "#6b7280", label: "Szürke" },
+  { code: "#111827", label: "Fekete" },
+  { code: "#a16207", label: "Barna" },
+  { code: "#ffffff", label: "Fehér" }
 ];
 
 let _objectTypesCache = [];
@@ -1165,7 +1194,7 @@ function renderSettingsObjectTypesPage() {
           internalId: "",
           type: "",
           description: "",
-          color: "green",
+          color: "#22c55e",
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
@@ -1217,7 +1246,7 @@ function readObjectTypeRow(tr) {
   const internalId = (tr.querySelector("input[data-field='internalId']")?.value || "").trim();
   const type = (tr.querySelector("input[data-field='type']")?.value || "").trim();
   const description = (tr.querySelector("input[data-field='description']")?.value || "").trim();
-  const color = tr.querySelector("select[data-field='color']")?.value || "green";
+  const color = tr.querySelector("select[data-field='color']")?.value || "#22c55e";
   return { id, internalId, type, description, color };
 }
 
@@ -1281,11 +1310,34 @@ function renderObjectTypesTable() {
       <td><input data-field="description" type="text" maxlength="50" value="${escapeHtml(rec.description || "")}" style="width:100%;"/></td>
       <td>
         <select data-field="color" style="width:100%;">
-          ${OBJECT_TYPE_COLORS.map(c => `<option value="${c.code}" ${String(rec.color||"green")===c.code?"selected":""}>${c.label}</option>`).join("")}
+          ${OBJECT_TYPE_COLORS.map(c => `<option value="${c.code}" ${String(rec.color||"#22c55e")===c.code?"selected":""}>${c.label}</option>`).join("")}
         </select>
       </td>
     `;
     tb.appendChild(tr);
+
+    // kis szín-minta a lenyíló mezőn (ha HEX kód)
+    const sel = tr.querySelector("select[data-field='color']");
+    if (sel) {
+      const apply = () => {
+        const v = String(sel.value || "").trim();
+        if (v.startsWith("#") && v.length >= 4) {
+          sel.style.background = v;
+          // kontraszt: egyszerű luminancia becslés
+          const hex = v.replace("#", "");
+          const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.slice(0, 2), 16) || 0;
+          const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.slice(2, 4), 16) || 0;
+          const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.slice(4, 6), 16) || 0;
+          const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b);
+          sel.style.color = lum < 140 ? "#ffffff" : "#111827";
+        } else {
+          sel.style.background = "";
+          sel.style.color = "";
+        }
+      };
+      apply();
+      sel.addEventListener("change", apply);
+    }
   });
 }
 

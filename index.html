@@ -156,14 +156,27 @@
       flex: 1 1 auto;
       min-width: 0;
       padding: 16px;
-      overflow:auto;
+      /* A jobb oldali tartalom legyen rugalmas, a táblázat töltse ki a rendelkezésre álló helyet */
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
       background: #fff;
+    }
+
+    /* A dinamikus tartalom (settingsExtra) töltse ki a jobb oldali panel magasságát */
+    #settingsExtra{
+      flex: 1 1 auto;
+      min-height: 0;
+      display:flex;
+      flex-direction:column;
     }
 
     /* v5.21: Objektum típusa táblázat scroll (függőleges + vízszintes) */
     #settingsModal .settings-table-wrap{
-      max-height: 420px;
-      overflow: auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      overflow: auto; /* vertical + horizontal */
       border: 1px solid #e5e7eb;
       border-radius: 12px;
       background: #fff;

@@ -1,4 +1,4 @@
-const APP_VERSION = "5.19.0";
+const APP_VERSION = "5.20.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1061,6 +1061,44 @@ function applyFilter() {
   renderFilterList(res);
 }
 
+// ---------------------------
+// Settings modal (v5.20.0)
+// ---------------------------
+
+function openSettingsModal() {
+  const m = document.getElementById("settingsModal");
+  if (!m) return;
+  m.style.display = "flex";
+  setSettingsPage("type");
+}
+
+function closeSettingsModal() {
+  const m = document.getElementById("settingsModal");
+  if (!m) return;
+  m.style.display = "none";
+}
+
+function setSettingsPage(page) {
+  const titleEl = document.getElementById("settingsTitle");
+  const hintEl = document.getElementById("settingsHint");
+  const navItems = Array.from(document.querySelectorAll("#settingsModal .settings-nav-item"));
+
+  navItems.forEach((b) => b.classList.toggle("active", b.dataset.page === page));
+
+  if (!titleEl || !hintEl) return;
+
+  if (page === "status") {
+    titleEl.textContent = "Objektum állapota";
+    hintEl.textContent = "Itt később az állapotok kezelése (adatbázis, színek, bővítés/módosítás) lesz elérhető.";
+  } else if (page === "users") {
+    titleEl.textContent = "Felhasználó kezelés";
+    hintEl.textContent = "Itt később a felhasználók kezelése (jogosultságok, admin, felvivő stb.) lesz elérhető.";
+  } else {
+    titleEl.textContent = "Objektum típusa";
+    hintEl.textContent = "Itt később a típusok kezelése (adatbázis, színek, bővítés/módosítás) lesz elérhető.";
+  }
+}
+
 
 async function refreshFilterData() {
   _allMarkersCache = filterShowDeleted ? await DB.getAllMarkers() : await DB.getAllMarkersActive();
@@ -1072,6 +1110,24 @@ async function refreshFilterData() {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btnFilter").addEventListener("click", openFilterModal);
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
+
+  const btnSettings = document.getElementById("btnSettings");
+  if (btnSettings) btnSettings.addEventListener("click", openSettingsModal);
+  const btnSettingsClose = document.getElementById("btnSettingsClose");
+  if (btnSettingsClose) btnSettingsClose.addEventListener("click", closeSettingsModal);
+
+  // oldalsó menü kattintás
+  document.querySelectorAll("#settingsModal .settings-nav-item").forEach((b) => {
+    b.addEventListener("click", () => setSettingsPage(b.dataset.page));
+  });
+
+  // overlay kattintás: csak ha a háttérre kattint (nem a tartalomra)
+  const settingsModal = document.getElementById("settingsModal");
+  if (settingsModal) {
+    settingsModal.addEventListener("click", (e) => {
+      if (e.target === settingsModal) closeSettingsModal();
+    });
+  }
 
   const btnShowAll = document.getElementById("btnShowAll");
   if (btnShowAll) {

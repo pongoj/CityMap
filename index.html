@@ -106,6 +106,65 @@
       box-shadow: 0 12px 28px rgba(0,0,0,.25);
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
     }
+
+    /* Settings modal (Edge-szerű elrendezés) */
+    #settingsModal .settings-modal{
+      width: min(980px, calc(100vw - 24px));
+      height: min(82vh, calc(100vh - 24px));
+      padding: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #settingsModal .settings-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      background: #fff;
+    }
+    #settingsModal .settings-shell{
+      display:flex;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    #settingsModal .settings-nav{
+      width: 240px;
+      background: #f3f4f6;
+      border-right: 1px solid #e5e7eb;
+      padding: 10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      overflow:auto;
+    }
+    #settingsModal .settings-nav-item{
+      text-align:left;
+      border:0;
+      background: transparent;
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight: 700;
+      color:#111827;
+    }
+    #settingsModal .settings-nav-item:hover{ background:#e5e7eb; }
+    #settingsModal .settings-nav-item.active{ background:#111827; color:#fff; }
+    #settingsModal .settings-content{
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 16px;
+      overflow:auto;
+      background: #fff;
+    }
+
+    @media (max-width: 720px){
+      #settingsModal .settings-shell{ flex-direction: column; }
+      #settingsModal .settings-nav{ width: auto; border-right: 0; border-bottom: 1px solid #e5e7eb; flex-direction: row; }
+      #settingsModal .settings-nav-item{ flex: 1 1 0; text-align:center; }
+    }
     .row{ display:flex; gap:10px; }
     label{ display:block; margin-top: 10px; font-size: 13px; color:#111827; }
     input, select, textarea{
@@ -191,6 +250,7 @@
     <button class="btn btn-add" id="btnAdd">Objektum hozzáadása</button>
     <button class="btn btn-filter" id="btnFilter">Szűrés</button>
     <button class="btn btn-filter" id="btnShowAll" style="display:none;">Összes megjelenítése</button>
+    <button class="btn btn-filter" id="btnSettings">Beállítások</button>
     <button class="btn btn-loc" id="btnMyLoc">Saját helyem</button>
     <button class="btn btn-clear" id="btnClear">Összes törlése</button>
   </div>
@@ -291,6 +351,28 @@
         <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
         <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
         <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal">
+    <div class="modal-content settings-modal">
+      <div class="settings-header">
+        <div style="font-weight:800; font-size:20px;">Beállítások</div>
+        <button class="btn btn-ghost" id="btnSettingsClose" type="button">Bezár</button>
+      </div>
+
+      <div class="settings-shell">
+        <div class="settings-nav">
+          <button class="settings-nav-item" data-page="type">Objektum típusa</button>
+          <button class="settings-nav-item" data-page="status">Objektum állapota</button>
+          <button class="settings-nav-item" data-page="users">Felhasználó kezelés</button>
+        </div>
+
+        <div class="settings-content" id="settingsContent">
+          <h3 id="settingsTitle" style="margin:0 0 10px 0;">Objektum típusa</h3>
+          <div class="small" id="settingsHint">Itt később a típusok kezelése (adatbázis, színek, bővítés/módosítás) lesz elérhető.</div>
+        </div>
       </div>
     </div>
   </div>

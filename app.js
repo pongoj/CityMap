@@ -1,4 +1,4 @@
-const APP_VERSION = "5.23.1";
+const APP_VERSION = "5.23.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1167,121 +1167,12 @@ const OBJECT_TYPE_COLORS = [
 // - "További színek...": natív color picker
 // ---------------------------
 
-let _colorPickerPopover = null;
-let _colorPickerTargetInput = null; // az aktuálisan szerkesztett (rejtett) input
-// Megjegyzés: a natív color picker (input[type=color]) Edge-en laptopon sokszor nem nyílik meg
-// megbízhatóan (user-gesture / fókusz / rejtettség függő). Ezért "További színek..." esetén
-// saját (Excel-jellegű) dialógust használunk.
-
-function ensureColorPickerPopover() {
-  if (_colorPickerPopover) return _colorPickerPopover;
-
-  const pop = document.createElement("div");
-  pop.id = "colorPickerPopover";
-  pop.className = "color-popover";
-  pop.style.display = "none";
-
-  // 10 oszlop x 3 sor (10 alapszín, 3 árnyalat)
-  const grid = document.createElement("div");
-  grid.className = "color-grid";
-
-  const cols = [];
-  for (let i = 0; i < OBJECT_TYPE_COLORS.length; i += 3) {
-    cols.push(OBJECT_TYPE_COLORS.slice(i, i + 3));
-  }
-  // render: soronként (3 sor), oszloponként (10)
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < cols.length; c++) {
-      const item = cols[c][r];
-      const sw = document.createElement("button");
-      sw.type = "button";
-      sw.className = "color-swatch";
-      sw.title = `${item.label} (${item.code})`;
-      sw.style.background = item.code;
-      sw.dataset.hex = item.code;
-      sw.addEventListener("click", () => {
-        if (!_colorPickerTargetInput) return;
-        _colorPickerTargetInput.value = item.code;
-        _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
-        closeColorPicker();
-      });
-      grid.appendChild(sw);
-    }
-  }
-
-  const footer = document.createElement("div");
-  footer.className = "color-footer";
-
-  const moreBtn = document.createElement("button");
-  moreBtn.type = "button";
-  moreBtn.className = "btn btn-ghost";
-  moreBtn.style.padding = "8px 10px";
-  moreBtn.textContent = "További színek...";
-
-  moreBtn.addEventListener("click", () => {
-    if (!_colorPickerTargetInput) return;
-    const start = /^#([0-9a-fA-F]{6})$/.test(_colorPickerTargetInput.value)
-      ? _colorPickerTargetInput.value
-      : "#3b82f6";
-    openExcelLikeColorDialog(start, (hex) => {
-      _colorPickerTargetInput.value = hex;
-      _colorPickerTargetInput.dispatchEvent(new Event("change", { bubbles: true }));
-      closeColorPicker();
-    });
-  });
-
-  footer.appendChild(moreBtn);
-
-  pop.appendChild(grid);
-  pop.appendChild(footer);
-  document.body.appendChild(pop);
-
-  // kattintás a popoveren kívül: zárás
-  document.addEventListener("click", (e) => {
-    if (!_colorPickerPopover || _colorPickerPopover.style.display === "none") return;
-    const inPopover = e.target.closest("#colorPickerPopover");
-    const inBtn = e.target.closest(".color-btn");
-    if (!inPopover && !inBtn) closeColorPicker();
-  });
-
-  _colorPickerPopover = pop;
-  return pop;
-}
-
-function openColorPicker(anchorBtn, targetInput) {
-  const pop = ensureColorPickerPopover();
-  _colorPickerTargetInput = targetInput;
-
-  const rect = anchorBtn.getBoundingClientRect();
-  pop.style.display = "block";
-
-  const popRect = pop.getBoundingClientRect();
-  let left = rect.left;
-  let top = rect.bottom + 6;
-  if (left + popRect.width > window.innerWidth - 8) {
-    left = Math.max(8, window.innerWidth - popRect.width - 8);
-  }
-  if (top + popRect.height > window.innerHeight - 8) {
-    top = Math.max(8, rect.top - popRect.height - 6);
-  }
-  pop.style.left = `${left + window.scrollX}px`;
-  pop.style.top = `${top + window.scrollY}px`;
-}
-
-function closeColorPicker() {
-  if (_colorPickerPopover) _colorPickerPopover.style.display = "none";
-  _colorPickerTargetInput = null;
-}
 
 // ---------------------------
 // "Excel-szerű" (saját) szín dialógus – natív picker helyett
 // Cél: Edge laptopon is működjön megbízhatóan.
 // ---------------------------
 
-let _excelColorDialog = null;
-let _excelColorDialogOnOk = null;
-let _excelColorDialogInitial = "#ffffff";
-let _excelColorDialogValue = "#ffffff";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -1413,29 +1304,30 @@ const BASE_COLORS = [
 let _colorsEditorOverlay = null;
 
 function openColorsEditorDialog(startHex, onOk) {
-  const initial = /^#([0-9a-fA-F]{6})$/.test(String(startHex || "")) ? String(startHex) : "#3B82F6";
+  const initial = /^#([0-9a-fA-F]{6})$/.test(String(startHex || "")) ? String(startHex).toUpperCase() : "#3B82F6";
   const rgb0 = hexToRgb(initial);
   const hsv0 = rgbToHsv(rgb0.r, rgb0.g, rgb0.b);
-  let hue = hsv0.h;
-  let sat = hsv0.s;
-  let val = hsv0.v;
-  let currentHex = initial.toUpperCase();
-  let custom = loadCustomColors();
+
+  let hue = hsv0.h;  // 0..360
+  let sat = hsv0.s;  // 0..100
+  let val = hsv0.v;  // 0..100
+  let currentHex = initial;
 
   // overlay újraépítése
   if (_colorsEditorOverlay) _colorsEditorOverlay.remove();
   const overlay = document.createElement("div");
   overlay.className = "colors-editor-overlay";
   overlay.innerHTML = `
-    <div class="colors-editor" role="dialog" aria-modal="true">
+    <div class="colors-editor colors-editor-compact" role="dialog" aria-modal="true">
       <div class="colors-editor-titlebar">
         <div class="colors-editor-title">Színek szerkesztése</div>
         <button type="button" class="colors-editor-x" aria-label="Bezár">×</button>
       </div>
+
       <div class="colors-editor-main">
         <div class="ce-left">
           <div class="ce-picker">
-            <div class="ce-sv" aria-label="Szín" tabindex="0">
+            <div class="ce-sv" aria-label="Szín kiválasztása" tabindex="0">
               <div class="ce-sv-white"></div>
               <div class="ce-sv-black"></div>
               <div class="ce-sv-cursor" aria-hidden="true"></div>
@@ -1444,23 +1336,15 @@ function openColorsEditorDialog(startHex, onOk) {
               <div class="ce-bar ce-hue" aria-label="Árnyalat" tabindex="0">
                 <div class="ce-bar-cursor" data-bar="hue"></div>
               </div>
-              <div class="ce-bar ce-val" aria-label="Világosság" tabindex="0">
-                <div class="ce-bar-cursor" data-bar="val"></div>
-              </div>
             </div>
           </div>
         </div>
+
         <div class="ce-right">
-          <input class="ce-hex" type="text" value="${initial.toUpperCase()}" />
-          <select class="ce-mode">
-            <option value="rgb" selected>RGB</option>
-          </select>
-          <div class="ce-rgb">
-            <div class="ce-rgb-row"><input class="ce-r" type="number" min="0" max="255" value="${rgb0.r}" /><span>Piros</span></div>
-            <div class="ce-rgb-row"><input class="ce-g" type="number" min="0" max="255" value="${rgb0.g}" /><span>Zöld</span></div>
-            <div class="ce-rgb-row"><input class="ce-b" type="number" min="0" max="255" value="${rgb0.b}" /><span>Kék</span></div>
-          </div>
-          <div class="ce-preview">
+          <label class="small" style="color:#6b7280; font-weight:800;">Kód (HEX)</label>
+          <input class="ce-hex" type="text" value="${initial}" />
+
+          <div class="ce-preview" style="margin-top:14px;">
             <div class="ce-preview-box">
               <div class="ce-preview-swatch" data-kind="new"></div>
               <div>
@@ -1484,10 +1368,6 @@ function openColorsEditorDialog(startHex, onOk) {
           <div class="ce-section-title">Alapszínek</div>
           <div class="ce-base"></div>
         </div>
-        <div class="ce-section">
-          <div class="ce-section-title">Egyéni színek <button type="button" class="ce-add" title="Hozzáadás">＋</button></div>
-          <div class="ce-custom"></div>
-        </div>
       </div>
 
       <div class="colors-editor-actions">
@@ -1499,45 +1379,35 @@ function openColorsEditorDialog(startHex, onOk) {
   document.body.appendChild(overlay);
   _colorsEditorOverlay = overlay;
 
-  const dlg = overlay.querySelector(".colors-editor");
   const btnX = overlay.querySelector(".colors-editor-x");
   const btnOk = overlay.querySelector(".ce-ok");
   const btnCancel = overlay.querySelector(".ce-cancel");
   const sv = overlay.querySelector(".ce-sv");
   const svCursor = overlay.querySelector(".ce-sv-cursor");
   const hueBar = overlay.querySelector(".ce-hue");
-  const valBar = overlay.querySelector(".ce-val");
   const hueCursor = overlay.querySelector(".ce-bar-cursor[data-bar='hue']");
-  const valCursor = overlay.querySelector(".ce-bar-cursor[data-bar='val']");
   const hexInput = overlay.querySelector(".ce-hex");
-  const rInput = overlay.querySelector(".ce-r");
-  const gInput = overlay.querySelector(".ce-g");
-  const bInput = overlay.querySelector(".ce-b");
   const prevNewSw = overlay.querySelector(".ce-preview-swatch[data-kind='new']");
   const prevOldSw = overlay.querySelector(".ce-preview-swatch[data-kind='old']");
   const prevNewHex = overlay.querySelector(".ce-preview-hex[data-kind='new']");
   const prevOldHex = overlay.querySelector(".ce-preview-hex[data-kind='old']");
   const baseWrap = overlay.querySelector(".ce-base");
-  const customWrap = overlay.querySelector(".ce-custom");
-  const btnAdd = overlay.querySelector(".ce-add");
 
   function setFromHsv() {
     const rgb = hsvToRgb(hue, sat, val);
-    const hex = rgbToHex(rgb.r, rgb.g, rgb.b).toUpperCase();
-    currentHex = hex;
-    hexInput.value = hex;
-    rInput.value = String(Math.round(rgb.r));
-    gInput.value = String(Math.round(rgb.g));
-    bInput.value = String(Math.round(rgb.b));
+    currentHex = rgbToHex(rgb.r, rgb.g, rgb.b).toUpperCase();
+    hexInput.value = currentHex;
     updateUi();
   }
 
   function setFromHex(hex) {
-    if (!/^#([0-9a-fA-F]{6})$/.test(hex)) return;
-    const rgb = hexToRgb(hex);
+    const v = String(hex || "").trim();
+    if (!/^#([0-9a-fA-F]{6})$/.test(v)) return;
+    const rgb = hexToRgb(v);
     const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
     hue = hsv.h; sat = hsv.s; val = hsv.v;
-    currentHex = hex.toUpperCase();
+    currentHex = v.toUpperCase();
+    hexInput.value = currentHex;
     updateUi();
   }
 
@@ -1546,29 +1416,26 @@ function openColorsEditorDialog(startHex, onOk) {
     const hueRgb = hsvToRgb(hue, 100, 100);
     const hueHex = rgbToHex(hueRgb.r, hueRgb.g, hueRgb.b);
     sv.style.background = hueHex;
-    // Cursorok
+
+    // SV cursor
     const svRect = sv.getBoundingClientRect();
     const x = clamp((sat / 100) * svRect.width, 0, svRect.width);
     const y = clamp(((100 - val) / 100) * svRect.height, 0, svRect.height);
     svCursor.style.left = `${x}px`;
     svCursor.style.top = `${y}px`;
-    // hue cursor (0..360 -> top..bottom)
+
+    // hue cursor
     const hb = hueBar.getBoundingClientRect();
     hueCursor.style.top = `${clamp((hue / 360) * hb.height, 0, hb.height)}px`;
-    // val cursor (0..100 -> top..bottom)
-    const vb = valBar.getBoundingClientRect();
-    valCursor.style.top = `${clamp(((100 - val) / 100) * vb.height, 0, vb.height)}px`;
-    // val bar background: current hue + sat
-    const topRgb = hsvToRgb(hue, sat, 100);
-    valBar.style.background = `linear-gradient(to bottom, ${rgbToHex(topRgb.r, topRgb.g, topRgb.b)}, #000000)`;
+
     // preview
     prevNewSw.style.background = currentHex;
     prevNewHex.textContent = currentHex;
   }
 
   function initPreview() {
-    prevOldSw.style.background = initial.toUpperCase();
-    prevOldHex.textContent = initial.toUpperCase();
+    prevOldSw.style.background = initial;
+    prevOldHex.textContent = initial;
     prevNewSw.style.background = currentHex;
     prevNewHex.textContent = currentHex;
   }
@@ -1581,41 +1448,9 @@ function openColorsEditorDialog(startHex, onOk) {
       b.className = "ce-swatch";
       b.style.background = hex;
       b.title = hex;
-      b.addEventListener("click", () => {
-        setFromHex(hex);
-      });
+      b.addEventListener("click", () => setFromHex(hex));
       baseWrap.appendChild(b);
     });
-  }
-
-  function renderCustomColors() {
-    customWrap.innerHTML = "";
-    custom.forEach((hex, idx) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "ce-swatch ce-swatch-dashed";
-      if (hex) {
-        b.classList.remove("ce-swatch-dashed");
-        b.style.background = hex;
-        b.title = hex;
-      } else {
-        b.title = "Üres";
-      }
-      b.addEventListener("click", () => {
-        if (custom[idx]) setFromHex(custom[idx]);
-      });
-      customWrap.appendChild(b);
-    });
-  }
-
-  function addToCustom() {
-    // első üres helyre, különben felülírja az utolsót
-    const hex = currentHex;
-    let i = custom.findIndex((x) => !x);
-    if (i === -1) i = custom.length - 1;
-    custom[i] = hex;
-    saveCustomColors(custom);
-    renderCustomColors();
   }
 
   function close() {
@@ -1674,245 +1509,30 @@ function openColorsEditorDialog(startHex, onOk) {
     hueBar.addEventListener("pointercancel", up);
   });
 
-  // Value bar
-  function handleVal(e) {
-    const r = valBar.getBoundingClientRect();
-    const cy = clamp(e.clientY - r.top, 0, r.height);
-    val = 100 - (cy / r.height) * 100;
-    setFromHsv();
-  }
-  valBar.addEventListener("pointerdown", (e) => {
-    valBar.setPointerCapture(e.pointerId);
-    handleVal(e);
-    const move = (ev) => handleVal(ev);
-    const up = (ev) => {
-      try { valBar.releasePointerCapture(ev.pointerId); } catch {}
-      valBar.removeEventListener("pointermove", move);
-      valBar.removeEventListener("pointerup", up);
-      valBar.removeEventListener("pointercancel", up);
-    };
-    valBar.addEventListener("pointermove", move);
-    valBar.addEventListener("pointerup", up);
-    valBar.addEventListener("pointercancel", up);
-  });
-
-  // HEX / RGB input
-  hexInput.addEventListener("change", () => setFromHex(hexInput.value.trim()));
-  function setFromRgbInputs() {
-    const r = clamp(parseInt(rInput.value || "0", 10), 0, 255);
-    const g = clamp(parseInt(gInput.value || "0", 10), 0, 255);
-    const b = clamp(parseInt(bInput.value || "0", 10), 0, 255);
-    const hex = rgbToHex(r, g, b).toUpperCase();
-    setFromHex(hex);
-  }
-  rInput.addEventListener("change", setFromRgbInputs);
-  gInput.addEventListener("change", setFromRgbInputs);
-  bInput.addEventListener("change", setFromRgbInputs);
-
-  // Alapszínek + Egyéni
-  renderBaseColors();
-  renderCustomColors();
-  btnAdd.addEventListener("click", addToCustom);
+  // HEX input
+  hexInput.addEventListener("change", () => setFromHex(hexInput.value));
 
   // Gombok
   btnX.addEventListener("click", close);
   btnCancel.addEventListener("click", close);
   btnOk.addEventListener("click", commit);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-  document.addEventListener("keydown", function esc(e){
+
+  const esc = (e) => {
     if (!_colorsEditorOverlay) return;
     if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); }
-  });
+  };
+  document.addEventListener("keydown", esc);
 
   // init
+  renderBaseColors();
   initPreview();
   updateUi();
-  // fókusz
+
   setTimeout(() => hexInput.focus(), 0);
 }
 
-function ensureExcelLikeColorDialog() {
-  if (_excelColorDialog) return _excelColorDialog;
 
-  const overlay = document.createElement("div");
-  overlay.id = "excelColorDialog";
-  overlay.className = "excel-color-overlay";
-  overlay.style.display = "none";
-
-  overlay.innerHTML = `
-    <div class="excel-color-dialog" role="dialog" aria-modal="true">
-      <div class="excel-color-titlebar">
-        <div class="excel-color-title">Színek</div>
-        <button class="excel-color-x" type="button" aria-label="Bezár">×</button>
-      </div>
-
-      <div class="excel-color-body">
-        <div class="excel-color-tabs">
-          <button type="button" class="excel-tab is-active" data-tab="standard">Szokásos</button>
-          <button type="button" class="excel-tab" data-tab="custom">Egyéni</button>
-        </div>
-
-        <div class="excel-color-panels">
-          <div class="excel-panel" data-panel="standard">
-            <div class="excel-swatch-grid" id="excelStandardGrid"></div>
-            <div class="excel-hint">Kattints egy színre, vagy válts az „Egyéni” fülre.</div>
-          </div>
-
-          <div class="excel-panel" data-panel="custom" style="display:none;">
-            <div class="excel-custom-layout">
-              <div class="excel-sliders">
-                <label>Színárnyalat (Hue)
-                  <input type="range" min="0" max="360" value="210" id="excelHue" />
-                </label>
-                <label>Telítettség (Saturation)
-                  <input type="range" min="0" max="100" value="70" id="excelSat" />
-                </label>
-                <label>Világosság (Lightness)
-                  <input type="range" min="0" max="100" value="50" id="excelLight" />
-                </label>
-
-                <label>HEX
-                  <input type="text" maxlength="7" placeholder="#RRGGBB" id="excelHex" />
-                </label>
-              </div>
-
-              <div class="excel-preview">
-                <div class="excel-preview-box">
-                  <div class="excel-preview-swatch" id="excelNewSwatch"></div>
-                  <div class="excel-preview-label">Új</div>
-                </div>
-                <div class="excel-preview-box">
-                  <div class="excel-preview-swatch" id="excelOldSwatch"></div>
-                  <div class="excel-preview-label">Jelenlegi</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="excel-color-actions">
-        <button type="button" class="btn" id="excelCancel">Mégse</button>
-        <button type="button" class="btn btn-save" id="excelOk">OK</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  const dlg = overlay;
-  const xBtn = dlg.querySelector(".excel-color-x");
-  const okBtn = dlg.querySelector("#excelOk");
-  const cancelBtn = dlg.querySelector("#excelCancel");
-
-  function closeDialog() {
-    dlg.style.display = "none";
-    _excelColorDialogOnOk = null;
-  }
-
-  xBtn.addEventListener("click", closeDialog);
-  cancelBtn.addEventListener("click", closeDialog);
-  dlg.addEventListener("click", (e) => {
-    if (e.target === dlg) closeDialog();
-  });
-
-  okBtn.addEventListener("click", () => {
-    if (typeof _excelColorDialogOnOk === "function") {
-      _excelColorDialogOnOk(_excelColorDialogValue);
-    }
-    closeDialog();
-  });
-
-  // Tabs
-  dlg.querySelectorAll(".excel-tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      dlg.querySelectorAll(".excel-tab").forEach(b => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
-      const tab = btn.dataset.tab;
-      dlg.querySelectorAll(".excel-panel").forEach(p => p.style.display = "none");
-      dlg.querySelector(`.excel-panel[data-panel='${tab}']`).style.display = "block";
-    });
-  });
-
-  // Standard grid (Excel-szerű alap színek) – 10x5 (50), de a mi célunkhoz elég egy „könnyű” lista.
-  const standardColors = [
-    "#000000", "#1f2937", "#6b7280", "#9ca3af", "#d1d5db",
-    "#ffffff", "#ef4444", "#f97316", "#f59e0b", "#84cc16",
-    "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#6366f1",
-    "#8b5cf6", "#a855f7", "#ec4899", "#f43f5e", "#7f1d1d",
-    "#9a3412", "#92400e", "#3f6212", "#14532d", "#064e3b",
-    "#0e7490", "#1d4ed8", "#1e3a8a", "#4c1d95", "#701a75"
-  ];
-  const grid = dlg.querySelector("#excelStandardGrid");
-  grid.innerHTML = "";
-  standardColors.forEach(hex => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "excel-swatch";
-    b.style.background = hex;
-    b.title = hex;
-    b.addEventListener("click", () => {
-      setDialogColor(hex, { updateSliders: true });
-    });
-    grid.appendChild(b);
-  });
-
-  const hue = dlg.querySelector("#excelHue");
-  const sat = dlg.querySelector("#excelSat");
-  const light = dlg.querySelector("#excelLight");
-  const hexInput = dlg.querySelector("#excelHex");
-
-  function setDialogColor(hex, opts = {}) {
-    const clean = /^#([0-9a-fA-F]{6})$/.test(hex) ? hex.toLowerCase() : _excelColorDialogValue;
-    _excelColorDialogValue = clean;
-    dlg.querySelector("#excelNewSwatch").style.background = clean;
-    hexInput.value = clean;
-
-    if (opts.updateSliders) {
-      const { r, g, b } = hexToRgb(clean);
-      const hsl = rgbToHsl(r, g, b);
-      hue.value = String(Math.round(hsl.h));
-      sat.value = String(Math.round(hsl.s));
-      light.value = String(Math.round(hsl.l));
-    }
-  }
-
-  function syncFromSliders() {
-    const rgb = hslToRgb(Number(hue.value), Number(sat.value), Number(light.value));
-    setDialogColor(rgbToHex(rgb.r, rgb.g, rgb.b), { updateSliders: false });
-  }
-
-  [hue, sat, light].forEach(r => r.addEventListener("input", syncFromSliders));
-  hexInput.addEventListener("input", () => {
-    const v = hexInput.value.trim();
-    if (/^#([0-9a-fA-F]{6})$/.test(v)) setDialogColor(v, { updateSliders: true });
-  });
-
-  // API
-  overlay._setInitial = (hex) => {
-    _excelColorDialogInitial = /^#([0-9a-fA-F]{6})$/.test(hex) ? hex.toLowerCase() : "#ffffff";
-    dlg.querySelector("#excelOldSwatch").style.background = _excelColorDialogInitial;
-    setDialogColor(_excelColorDialogInitial, { updateSliders: true });
-  };
-
-  _excelColorDialog = overlay;
-  return overlay;
-}
-
-function openExcelLikeColorDialog(initialHex, onOk) {
-  const dlg = ensureExcelLikeColorDialog();
-  _excelColorDialogOnOk = onOk;
-  dlg._setInitial(initialHex);
-
-  // alap fül: Szokásos
-  dlg.querySelectorAll(".excel-tab").forEach(b => b.classList.remove("is-active"));
-  dlg.querySelector(".excel-tab[data-tab='standard']").classList.add("is-active");
-  dlg.querySelectorAll(".excel-panel").forEach(p => p.style.display = "none");
-  dlg.querySelector(".excel-panel[data-panel='standard']").style.display = "block";
-
-  dlg.style.display = "flex";
-}
 
 let _objectTypesCache = [];
 let _objectTypesUiWired = false;

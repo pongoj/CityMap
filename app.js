@@ -1,4 +1,4 @@
-const APP_VERSION = "5.23.2";
+const APP_VERSION = "5.23.3";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -291,6 +291,73 @@ async function closeModal() {
 }
 
 let myLocationMarker = null;
+let myLocationWatchId = null;
+let myLocationAddressText = "Saját hely";
+let lastMyLocCenterTs = 0; // mikor kértünk kifejezetten középre igazítást
+
+async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
+  const ll = [lat, lng];
+
+  if (fetchAddressOnce) {
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+      );
+      const j = await r.json();
+      if (j.display_name) myLocationAddressText = j.display_name;
+    } catch (e) {
+      // no-op
+    }
+  }
+
+  if (!myLocationMarker) {
+    myLocationMarker = L.marker(ll, { icon: userIconForZoom(map.getZoom()) }).addTo(map);
+    myLocationMarker.bindPopup(`<b>Saját hely</b><br>${escapeHtml(myLocationAddressText)}`);
+  } else {
+    myLocationMarker.setLatLng(ll);
+    try {
+      myLocationMarker.setIcon(userIconForZoom(map.getZoom()));
+    } catch (_) {}
+    if (myLocationMarker.getPopup()) {
+      myLocationMarker.getPopup().setContent(
+        `<b>Saját hely</b><br>${escapeHtml(myLocationAddressText)}`
+      );
+    }
+  }
+}
+
+function startMyLocationWatch() {
+  if (!navigator.geolocation) return;
+  if (myLocationWatchId !== null) return;
+
+  myLocationWatchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const shouldFetchAddress = myLocationAddressText === "Saját hely";
+      await ensureMyLocationMarker(lat, lng, shouldFetchAddress);
+
+      // rövid ideig kövesse a mozgást, ha középre igazítást kértünk
+      if (Date.now() - lastMyLocCenterTs < 15000) {
+        map.setView([lat, lng], map.getZoom(), { animate: false });
+      }
+    },
+    (err) => {
+      console.warn("watchPosition error", err);
+      if (myLocationWatchId !== null) {
+        try {
+          navigator.geolocation.clearWatch(myLocationWatchId);
+        } catch (_) {}
+        myLocationWatchId = null;
+      }
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 10000,
+    }
+  );
+}
 
 async function centerToMyLocation() {
   return new Promise((resolve) => {
@@ -300,26 +367,11 @@ async function centerToMyLocation() {
         const lng = pos.coords.longitude;
         const ll = [lat, lng];
 
+        lastMyLocCenterTs = Date.now();
         map.setView(ll, 20);
+        await ensureMyLocationMarker(lat, lng, true);
 
-        if (myLocationMarker) {
-          map.removeLayer(myLocationMarker);
-        }
-
-        let addressText = "Saját hely";
-        try {
-          const r = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-          );
-          const j = await r.json();
-          if (j.display_name) addressText = j.display_name;
-        } catch (e) {}
-
-        myLocationMarker = L.marker(ll, { icon: userIconForZoom(map.getZoom()) }).addTo(map);
-
-        myLocationMarker.bindPopup(
-          `<b>Saját hely</b><br>${addressText}`
-        );
+        startMyLocationWatch();
 
         resolve(true);
       },

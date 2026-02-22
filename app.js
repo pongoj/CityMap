@@ -1,4 +1,4 @@
-const APP_VERSION = "5.23.4";
+const APP_VERSION = "5.23.5";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -978,6 +978,33 @@ function applyMapMarkerVisibility(idsToShow) {
   updateShowAllButtonVisibility();
 }
 
+// A térkép igazítása a megjelenített markerekhez (szűrés után)
+function fitMapToMarkersByIds(idsToShow) {
+  if (!map) return;
+  const ids = (idsToShow || []).map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  if (ids.length === 0) return;
+
+  const latlngs = [];
+  for (const id of ids) {
+    const mk = markerLayers.get(Number(id));
+    if (!mk) continue;
+    if (typeof mk.getLatLng === "function") {
+      latlngs.push(mk.getLatLng());
+    }
+  }
+
+  if (latlngs.length === 0) return;
+
+  if (latlngs.length === 1) {
+    const targetZoom = Math.max(map.getZoom(), 18);
+    map.setView(latlngs[0], targetZoom, { animate: true });
+    return;
+  }
+
+  const bounds = L.latLngBounds(latlngs);
+  map.fitBounds(bounds, { padding: [30, 30], maxZoom: 18, animate: true });
+}
+
 function toggleFilterRowSelection(markerId, trEl) {
   const id = Number(markerId);
   if (!Number.isFinite(id)) return;
@@ -1875,6 +1902,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       applyMapMarkerVisibility(idsToShow);
+      // A térkép legyen úgy méretezve, hogy az összes megjelenített marker látszódjon
+      fitMapToMarkersByIds(idsToShow);
       closeFilterModal();
     });
   }

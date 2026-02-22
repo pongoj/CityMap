@@ -1,4 +1,4 @@
-const APP_VERSION = "5.23.5";
+const APP_VERSION = "5.23.6";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -295,6 +295,10 @@ let myLocationWatchId = null;
 let myLocationAddressText = "Saját hely";
 let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig követjük a pozíciót)
 
+// Last known location from watchPosition (helps when getCurrentPosition fails/timeouts)
+let lastMyLocation = null; // { lat:number, lng:number, ts:number }
+const myLocWaiters = new Set(); // resolves waiting for first fix
+
 async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
   const ll = [lat, lng];
 
@@ -334,6 +338,17 @@ function startMyLocationWatch() {
     async (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
+
+      lastMyLocation = { lat, lng, ts: Date.now() };
+      // release any waiters that are waiting for first position fix
+      if (myLocWaiters.size) {
+        for (const fn of Array.from(myLocWaiters)) {
+          try {
+            fn(true);
+          } catch (_) {}
+        }
+        myLocWaiters.clear();
+      }
       const shouldFetchAddress = myLocationAddressText === "Saját hely";
       await ensureMyLocationMarker(lat, lng, shouldFetchAddress);
 
@@ -349,6 +364,16 @@ function startMyLocationWatch() {
         } catch (_) {}
         myLocationWatchId = null;
       }
+
+      // If someone is waiting for a fix, fail them.
+      if (myLocWaiters.size) {
+        for (const fn of Array.from(myLocWaiters)) {
+          try {
+            fn(false);
+          } catch (_) {}
+        }
+        myLocWaiters.clear();
+      }
     },
     {
       enableHighAccuracy: true,
@@ -359,25 +384,56 @@ function startMyLocationWatch() {
 }
 
 async function centerToMyLocation() {
-  return new Promise((resolve) => {
+  // If we already have a recent fix from watchPosition, use it immediately.
+  if (lastMyLocation && Date.now() - lastMyLocation.ts < 60_000) {
+    lastMyLocCenterTs = Date.now();
+    map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: false });
+    await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, false);
+    startMyLocationWatch();
+    return true;
+  }
+
+  // Try to get a fix via getCurrentPosition (this often triggers permission prompt).
+  const got = await new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(false);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const ll = [lat, lng];
+        lastMyLocation = { lat, lng, ts: Date.now() };
 
         lastMyLocCenterTs = Date.now();
-        map.setView(ll, 20);
+        map.setView([lat, lng], 20, { animate: false });
         await ensureMyLocationMarker(lat, lng, true);
 
         startMyLocationWatch();
-
         resolve(true);
       },
       () => resolve(false),
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
     );
   });
+
+  if (got) return true;
+
+  // Fallback: start watch and wait briefly for first fix.
+  startMyLocationWatch();
+  const ok = await new Promise((resolve) => {
+    const fn = (v) => resolve(v);
+    myLocWaiters.add(fn);
+    setTimeout(() => {
+      if (myLocWaiters.has(fn)) {
+        myLocWaiters.delete(fn);
+        resolve(false);
+      }
+    }, 15000);
+  });
+
+  if (!ok || !lastMyLocation) return false;
+
+  map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: false });
+  await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, true);
+  return true;
 }
 
 function idText(id) {
@@ -750,7 +806,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("btnMyLoc").addEventListener("click", async () => {
     const ok = await centerToMyLocation();
-    if (!ok) alert("Nem sikerült lekérni a pozíciót.");
+    if (!ok)
+      alert(
+        "Nem sikerült lekérni a pozíciót.\n\n" +
+          "Ellenőrizd, hogy a böngészőben engedélyezve van-e a helymeghatározás (lakatszimbólum a címsorban), " +
+          "és hogy van-e GPS/jel."
+      );
   });
 
   document.getElementById("btnClear").addEventListener("click", async () => {

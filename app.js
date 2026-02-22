@@ -1,4 +1,4 @@
-const APP_VERSION = "5.23.3";
+const APP_VERSION = "5.23.4";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -293,7 +293,7 @@ async function closeModal() {
 let myLocationMarker = null;
 let myLocationWatchId = null;
 let myLocationAddressText = "Saját hely";
-let lastMyLocCenterTs = 0; // mikor kértünk kifejezetten középre igazítást
+let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig követjük a pozíciót)
 
 async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
   const ll = [lat, lng];
@@ -337,10 +337,9 @@ function startMyLocationWatch() {
       const shouldFetchAddress = myLocationAddressText === "Saját hely";
       await ensureMyLocationMarker(lat, lng, shouldFetchAddress);
 
-      // rövid ideig kövesse a mozgást, ha középre igazítást kértünk
-      if (Date.now() - lastMyLocCenterTs < 15000) {
-        map.setView([lat, lng], map.getZoom(), { animate: false });
-      }
+      // Mindig kövesse a mozgást (gyalog/autó közben is), hogy a felvitelkor
+      // a térkép folyamatosan a jelenlegi pozíció közelében maradjon.
+      map.setView([lat, lng], map.getZoom(), { animate: false });
     },
     (err) => {
       console.warn("watchPosition error", err);

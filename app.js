@@ -1,4 +1,4 @@
-const APP_VERSION = "5.25";
+const APP_VERSION = "5.25.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -375,6 +375,7 @@ const GPS_MOVE_THRESHOLD_M = 3;
 const GPS_SMOOTH_WINDOW = 5;
 
 let lastAcceptedMyLocation = null; // { lat, lng, ts }
+let lastCenteredMyLocation = null; // { lat, lng }
 const myLocHistory = []; // [{lat,lng}]
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -465,8 +466,28 @@ function startMyLocationWatch() {
       const shouldFetchAddress = myLocationAddressText === "Saját hely";
       await ensureMyLocationMarker(sm.lat, sm.lng, shouldFetchAddress);
 
-      // Folyamatos követés: csak akkor mozgatjuk a térképet, ha átment a szűrésen.
-      map.setView([sm.lat, sm.lng], map.getZoom(), { animate: false });
+      // Folyamatos követés, de remegés ellen:
+      // - a markert mindig frissítjük (ha átment a pontosság szűrésen)
+      // - a térképet csak akkor középre tesszük, ha az elmozdulás "érdemi"
+      //   (dinamikus küszöb az accuracy alapján + minimális időköz).
+      const nowTs = Date.now();
+      const minCenterIntervalMs = 700;
+      const dynThreshold = Math.min(20, Math.max(6, acc * 0.8)); // m
+      const canCenterByTime = (nowTs - lastMyLocCenterTs) >= minCenterIntervalMs;
+      let shouldCenter = false;
+
+      if (!lastCenteredMyLocation) {
+        shouldCenter = true;
+      } else {
+        const dc = distanceMeters(sm.lat, sm.lng, lastCenteredMyLocation.lat, lastCenteredMyLocation.lng);
+        if (dc >= dynThreshold) shouldCenter = true;
+      }
+
+      if (shouldCenter && canCenterByTime) {
+        lastMyLocCenterTs = nowTs;
+        lastCenteredMyLocation = { lat: sm.lat, lng: sm.lng };
+        map.setView([sm.lat, sm.lng], map.getZoom(), { animate: false });
+      }
     },
     (err) => {
       console.warn("watchPosition error", err);

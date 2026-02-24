@@ -1,4 +1,4 @@
-const APP_VERSION = "5.24.7";
+const APP_VERSION = "5.24.9";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -391,6 +391,80 @@ if (!myLocationMarker) {
       myLocationMarker.getPopup().setContent(
         `<b>Saját hely</b><br>${escapeHtml(myLocationAddressText)}`
       );
+    }
+  }
+}
+
+
+async function ensureGeolocationPermission({ onDeniedAlert = true } = {}) {
+  // Returns: "granted" | "prompt" | "denied" | "unknown"
+  if (!navigator.geolocation) return "unknown";
+
+  // Prefer the Permissions API when available (not supported everywhere).
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const st = await navigator.permissions.query({ name: "geolocation" });
+      if (st && (st.state === "granted" || st.state === "prompt" || st.state === "denied")) {
+        if (st.state === "denied" && onDeniedAlert) {
+          alert(
+            "A helyadatok nincsenek engedélyezve ehhez az oldalhoz.\n\n" +
+              "Kérlek engedélyezd a helyadatokat a böngésző / webhely beállításaiban, majd frissítsd az oldalt."
+          );
+        }
+        if (st.state === "prompt") {
+          // Trigger browser prompt via getCurrentPosition.
+          await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              () => resolve(true),
+              () => resolve(false),
+              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+          });
+        }
+        return st.state;
+      }
+    }
+  } catch (e) {
+    // ignore and fall back
+  }
+
+  // Fallback: calling getCurrentPosition triggers the permission prompt (if the browser supports it).
+  await new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      () => resolve(true),
+      () => resolve(false),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+  return "unknown";
+}
+
+async function initMyLocationOnStartup() {
+  // Check permission every start; if not granted, ask for it (prompt).
+  const st = await ensureGeolocationPermission({ onDeniedAlert: true });
+
+  // If we can, start tracking immediately so "Saját hely" works and the map can follow the position.
+  if (st === "granted" || st === "prompt" || st === "unknown") {
+    try {
+      // Prime last location if possible; this also ensures the prompt has a visible effect.
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          lastMyLocation = { lat, lng, ts: Date.now() };
+          await ensureMyLocationMarker(lat, lng, true);
+          // Keep current zoom (no zoom-jump), but center to current position.
+          map.setView([lat, lng], map.getZoom(), { animate: false });
+          startMyLocationWatch();
+        },
+        () => {
+          // Even if we don't get a fix now, watchPosition may succeed later.
+          startMyLocationWatch();
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+      );
+    } catch (_) {
+      // ignore
     }
   }
 }
@@ -825,6 +899,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
+
+  // Induláskor ellenőrizzük a helyadat engedélyt, és ha kell, kérjük.
+  // (Ha tiltva van, tájékoztatunk; ha kérdéses, a böngésző felugró engedély-kérést ad.)
+  initMyLocationOnStartup();
 
   await DB.init();
 

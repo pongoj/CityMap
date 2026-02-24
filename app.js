@@ -1,4 +1,4 @@
-const APP_VERSION = "5.24.7";
+const APP_VERSION = "5.24.8.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -448,6 +448,45 @@ function startMyLocationWatch() {
   );
 }
 
+// Startup check: detect whether geolocation permission is enabled and notify the user if not.
+// Note: browsers do not allow us to "enable" permission programmatically. We can only inform.
+async function checkGeolocationPermissionOnStartup() {
+  try {
+    if (!navigator.geolocation) return;
+
+    // Prefer Permissions API when available (does NOT trigger a prompt).
+    if (navigator.permissions && navigator.permissions.query) {
+      let p;
+      try {
+        p = await navigator.permissions.query({ name: "geolocation" });
+      } catch (_) {
+        // Some browsers throw for unsupported permission names.
+        p = null;
+      }
+
+      if (p && p.state === "denied") {
+        alert(
+          "A helymeghatározás tiltva van ehhez az oldalhoz.\n\n" +
+            "Engedélyezd a böngészőben a lakatszimbólumnál (Webhely beállításai → Hely), majd frissítsd az oldalt."
+        );
+      } else if (p && p.state === "prompt") {
+        alert(
+          "A helymeghatározás még nincs engedélyezve.\n\n" +
+            "Ha a böngésző rákérdez, válaszd az Engedélyezés opciót, vagy állítsd be a lakatszimbólumnál (Webhely beállításai → Hely)."
+        );
+      }
+
+      return;
+    }
+
+    // No reliable, prompt-free way to check without Permissions API.
+    // We intentionally do nothing here to avoid an unsolicited permission prompt on page load.
+  } catch (e) {
+    // Never fail app startup due to permission checks.
+    console.warn("Geolocation permission check failed", e);
+  }
+}
+
 async function centerToMyLocation() {
   // If we already have a recent fix from watchPosition, use it immediately.
   if (lastMyLocation && Date.now() - lastMyLocation.ts < 60_000) {
@@ -819,6 +858,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("appVersion").textContent = "v" + APP_VERSION;
   registerSW();
   checkForUpdateOnline();
+
+  // Induláskor ellenőrizzük, hogy engedélyezve van-e a helymeghatározás.
+  // (Ez nem kér engedélyt automatikusan, csak tájékoztat.)
+  await checkGeolocationPermissionOnStartup();
 
   map = L.map("map");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

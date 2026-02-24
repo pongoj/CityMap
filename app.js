@@ -1,4 +1,4 @@
-const APP_VERSION = "5.24.0";
+const APP_VERSION = "5.24.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -229,6 +229,48 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function nominatimReverseJSONP(lat, lng, { timeoutMs = 8000 } = {}) {
+  // Nominatim does not reliably send CORS headers, so browser fetch() can be blocked.
+  // JSONP is supported via json_callback and works in Chrome/Edge without CORS.
+  return new Promise((resolve, reject) => {
+    const cbName = "__cm_nominatim_cb_" + Math.random().toString(36).slice(2);
+    const script = document.createElement("script");
+    const cleanup = () => {
+      try { delete window[cbName]; } catch (_) {}
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    };
+    const t = setTimeout(() => {
+      cleanup();
+      reject(new Error("Nominatim timeout"));
+    }, timeoutMs);
+
+    window[cbName] = (data) => {
+      clearTimeout(t);
+      cleanup();
+      resolve(data);
+    };
+
+    const url =
+      "https://nominatim.openstreetmap.org/reverse" +
+      "?format=jsonv2" +
+      "&addressdetails=1" +
+      "&zoom=18" +
+      "&lat=" + encodeURIComponent(lat) +
+      "&lon=" + encodeURIComponent(lng) +
+      "&json_callback=" + encodeURIComponent(cbName);
+
+    script.src = url;
+    script.async = true;
+    script.onerror = () => {
+      clearTimeout(t);
+      cleanup();
+      reject(new Error("Nominatim load error"));
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
 function showHint(text, ms = 2500) {
   const el = document.getElementById("hint");
   el.textContent = text;
@@ -257,22 +299,20 @@ function openModal(latlng) {
 
   updateAttachPhotoLabel();
 
-  // reverse geocode
-  fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`)
-    .then(r => r.json())
+  // reverse geocode (CORS-safe JSONP)
+  nominatimReverseJSONP(latlng.lat, latlng.lng)
     .then(j => {
-      const a = j.address || {};
+      const a = (j && j.address) || {};
       if (a.city || a.town || a.village)
         document.getElementById("fCity").value = a.city || a.town || a.village || "";
       if (a.road)
-        document.getElementById("fStreet").value =
-          a.road + (a.road_type ? " " + a.road_type : "");
+        document.getElementById("fStreet").value = a.road;
       if (a.house_number)
         document.getElementById("fHouse").value = a.house_number;
     })
     .catch(() => {});
 
-  document.getElementById("markerModal").style.display = "flex";
+document.getElementById("markerModal").style.display = "flex";
 }
 
 async function closeModal() {
@@ -304,17 +344,14 @@ async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
 
   if (fetchAddressOnce) {
     try {
-      const r = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-      );
-      const j = await r.json();
-      if (j.display_name) myLocationAddressText = j.display_name;
+      const j = await nominatimReverseJSONP(lat, lng, { timeoutMs: 8000 });
+      if (j && j.display_name) myLocationAddressText = j.display_name;
     } catch (e) {
       // no-op
     }
   }
 
-  if (!myLocationMarker) {
+if (!myLocationMarker) {
     myLocationMarker = L.marker(ll, { icon: userIconForZoom(map.getZoom()) }).addTo(map);
     myLocationMarker.bindPopup(`<b>Saját hely</b><br>${escapeHtml(myLocationAddressText)}`);
   } else {

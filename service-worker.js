@@ -6,7 +6,7 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "0.4.1" és itt: CACHE_VERSION = "v0.4.1"
-const CACHE_VERSION = "v5.24.4";
+const CACHE_VERSION = "v5.24.5";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
@@ -14,7 +14,8 @@ const CORE = [
   "./app.js",
   "./db.js",
   "./manifest.json",
-  "./service-worker.js",];
+  "./service-worker.js"
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

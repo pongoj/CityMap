@@ -11,7 +11,6 @@ let filterPhotosBtnCheckToken = 0;
 let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív marker látszik
 
 let map;
-let addMode = false;
 let pendingLatLng = null;
 
 // Objektum módosítás (markerModal újrafelhasználása)
@@ -864,12 +863,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       await updateAttachPhotoLabel();
     });
   }
-
-  document.getElementById("btnAdd").addEventListener("click", () => {
-    addMode = true;
-    showHint("Bökj a térképre az objektum helyéhez.");
-  });
-
   document.getElementById("btnMyLoc").addEventListener("click", async () => {
     const ok = await centerToMyLocation();
     if (!ok)
@@ -888,12 +881,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     activeMapFilterIds = null;
     updateShowAllButtonVisibility();
   });
-
   map.on("click", (e) => {
-    addMode = false;
     openModal(e.latlng);
   });
-
   const ok = await centerToMyLocation();
   if (!ok) map.setView([47.4979, 19.0402], 15);
 
@@ -907,6 +897,193 @@ document.addEventListener("DOMContentLoaded", async () => {
     mk.setIcon(resizedIconForType(data.type, z));
   });
 });
+
+  document.getElementById("btnFilter").addEventListener("click", openFilterModal);
+  document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
+
+  const btnSettings = document.getElementById("btnSettings");
+  if (btnSettings) btnSettings.addEventListener("click", openSettingsModal);
+  const btnSettingsClose = document.getElementById("btnSettingsClose");
+  if (btnSettingsClose) btnSettingsClose.addEventListener("click", closeSettingsModal);
+
+  // oldalsó menü kattintás
+  document.querySelectorAll("#settingsModal .settings-nav-item").forEach((b) => {
+    b.addEventListener("click", () => setSettingsPage(b.dataset.page));
+  });
+
+  // overlay kattintás: csak ha a háttérre kattint (nem a tartalomra)
+  const settingsModal = document.getElementById("settingsModal");
+  if (settingsModal) {
+    settingsModal.addEventListener("click", (e) => {
+      if (e.target === settingsModal) closeSettingsModal();
+    });
+  }
+
+  const btnShowAll = document.getElementById("btnShowAll");
+  if (btnShowAll) {
+    btnShowAll.addEventListener("click", () => {
+      clearMapMarkerVisibilityFilter();
+      showHint("Összes marker megjelenítve.");
+    });
+  }
+
+    const showBtn = document.getElementById("filterShowBtn");
+  if (showBtn) {
+    showBtn.disabled = true;
+    showBtn.addEventListener("click", () => {
+      // v5.15: Megjelenítés
+      // - ha van kijelölés: csak a kijelölt (nem törölt) markerek maradjanak a térképen
+      // - ha nincs kijelölés: a táblázat aktuális (szűrt) tartalma alapján
+
+      const selectedIds = Array.from(selectedFilterMarkerIds)
+        .map((x) => Number(x))
+        .filter((x) => Number.isFinite(x));
+
+      let idsToShow = [];
+      if (selectedIds.length > 0) {
+        // törölt elemeket ne próbáljuk megjeleníteni (amúgy sincsenek a térképen)
+        const deletedInSelection = new Set(
+          Array.from(document.querySelectorAll('#sfList tr.row-selected.row-deleted'))
+            .map((tr) => Number(tr.dataset.markerId))
+            .filter((x) => Number.isFinite(x))
+        );
+        idsToShow = selectedIds.filter((id) => !deletedInSelection.has(id));
+
+        // Ha csak törölt elemek vannak kijelölve, akkor ne zárjuk be az ablakot
+        if (idsToShow.length === 0) {
+          showHint("Nem lehet megjeleníteni a törölt markereket.");
+          return;
+        }
+
+        if (deletedInSelection.size > 0) {
+          showHint("A törölt markereket nem lehet megjeleníteni – kihagyva.");
+        }
+      } else {
+        idsToShow = getIdsFromCurrentFilterTable({ includeDeleted: false });
+        if (idsToShow.length === 0) {
+          showHint("Nincs megjeleníthető (nem törölt) marker a listában.");
+          return;
+        }
+      }
+
+      applyMapMarkerVisibility(idsToShow);
+      // A térkép legyen úgy méretezve, hogy az összes megjelenített marker látszódjon
+      fitMapToMarkersByIds(idsToShow);
+      closeFilterModal();
+    });
+  }
+
+  const clearBtn = document.getElementById("filterClearSelectionBtn");
+  if (clearBtn) {
+    clearBtn.disabled = true;
+    clearBtn.addEventListener("click", clearAllFilterSelections);
+  }
+
+  const photosBtn = document.getElementById("filterPhotosBtn");
+  if (photosBtn) {
+    photosBtn.disabled = true;
+    photosBtn.addEventListener("click", async () => {
+      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+      if (rows.length !== 1) return;
+
+      const tr = rows[0];
+      const id = Number(tr.dataset.markerId);
+      const uuid = tr.dataset.markerUuid || "";
+      if (!uuid) return;
+
+      // Ugyanaz a galéria modal, mint a marker popup "Fotók" gombjánál
+      openPhotoGallery(uuid, Number.isFinite(id) ? idText(id) : "Fotók");
+    });
+  }
+
+  const editBtn = document.getElementById("filterEditBtn");
+  if (editBtn) {
+    editBtn.disabled = true;
+    editBtn.addEventListener("click", async () => {
+      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+      if (rows.length !== 1) return;
+
+      const tr = rows[0];
+      if (tr.classList.contains('row-deleted')) return;
+
+      const id = Number(tr.dataset.markerId);
+      if (!Number.isFinite(id)) return;
+
+      try {
+        const m = await DB.getMarkerById(id);
+        if (!m || m.deletedAt) {
+          showHint("A törölt marker nem módosítható.");
+          return;
+        }
+        closeFilterModal();
+        openEditModal(m);
+      } catch (err) {
+        console.error("filter edit open failed", err);
+        alert("Nem sikerült betölteni a marker adatait.");
+      }
+    });
+  }
+
+  const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.addEventListener("click", async () => {
+      const ids = Array.from(selectedFilterMarkerIds)
+        .map((x) => Number(x))
+        .filter((x) => Number.isFinite(x));
+
+      if (ids.length === 0) {
+        alert("Nincs kijelölt sor.");
+        return;
+      }
+
+      const count = ids.length;
+      const ok = confirm(
+        `Biztosan törlöd (soft delete) a kijelölt ${count} db marker(eke)t? A töröltek később megjeleníthetők.`
+      );
+      if (!ok) return;
+
+      try {
+        // Törlés az adatbázisból (soft delete) + eltávolítás a térképről
+        for (const id of ids) {
+          await DB.softDeleteMarker(id);
+
+          const leafletMarker = markerLayers.get(id);
+          if (leafletMarker) {
+            map.removeLayer(leafletMarker);
+            markerLayers.delete(id);
+          }
+
+          if (activeMapFilterIds instanceof Set) activeMapFilterIds.delete(Number(id));
+        }
+
+        updateShowAllButtonVisibility();
+
+        // UI frissítés: cache frissítés + kiválasztások törlése + táblázat újraszűrése
+        // (különben törlés után a táblázatban még látszódhatnak sorok a cache miatt)
+        _allMarkersCache = filterShowDeleted ? await DB.getAllMarkers() : await DB.getAllMarkersActive();
+        selectedFilterMarkerIds.clear();
+        updateFilterShowButtonState();
+        applyFilter();
+      } catch (e) {
+        console.error(e);
+        alert("Hiba történt a törlés közben.");
+      }
+    });
+  }
+  if (showDeletedBtn) {
+    showDeletedBtn.addEventListener("click", async () => {
+      filterShowDeleted = !filterShowDeleted;
+      showDeletedBtn.textContent = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
+      clearAllFilterSelections();
+      await refreshFilterData();
+    });
+  }
+
+  document.getElementById("sfAddress").addEventListener("input", applyFilter);
+  document.getElementById("sfType").addEventListener("change", applyFilter);
+  document.getElementById("sfStatus").addEventListener("change", applyFilter);
+
 });
 
 
@@ -973,9 +1150,8 @@ function openFilterModal() {
   // újranyitáskor alapból töröljük a kijelöléseket (később átállítható, ha kell)
   selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
-  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showBtn) showBtn.disabled = true;
-refreshFilterData();
+  refreshFilterData().catch(console.error);
 
   const showDelBtn = document.getElementById("filterShowDeletedBtn");
   if (showDelBtn) {
@@ -987,7 +1163,6 @@ function closeFilterModal() {
   document.getElementById("filterModal").style.display = "none";
   selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
-  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showBtn) showBtn.disabled = true;
 }
 
@@ -1022,8 +1197,7 @@ function updateFilterShowButtonState() {
   const tableHasRows = document.querySelectorAll('#sfList tr').length > 0;
 
   const showBtn = document.getElementById("filterShowBtn");
-  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
-  const clearBtn = document.getElementById("filterClearSelectionBtn");
+const clearBtn = document.getElementById("filterClearSelectionBtn");
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
   const photosBtn = document.getElementById("filterPhotosBtn");
   const editBtn = document.getElementById("filterEditBtn");
@@ -1311,60 +1485,6 @@ function setSettingsPage(page) {
 // ---------------------------
 // Settings: Objektum típusa (v5.21)
 // ---------------------------
-
-// Választható marker-színek (pontosan 30 db, 2-3 árnyalat / alapszín)
-// Megjegyzés: a korábbi "régi" (leaflet-color-markers) kódokat kivettük.
-const OBJECT_TYPE_COLORS = [
-  // Zöld
-  { code: "#22c55e", label: "Zöld" },
-  { code: "#16a34a", label: "Zöld (sötét)" },
-  { code: "#15803d", label: "Zöld (nagyon sötét)" },
-
-  // Türkiz / Teal
-  { code: "#14b8a6", label: "Türkiz" },
-  { code: "#0d9488", label: "Türkiz (sötét)" },
-  { code: "#0f766e", label: "Türkiz (nagyon sötét)" },
-
-  // Cián
-  { code: "#06b6d4", label: "Cián" },
-  { code: "#0891b2", label: "Cián (sötét)" },
-  { code: "#0e7490", label: "Cián (nagyon sötét)" },
-
-  // Kék
-  { code: "#3b82f6", label: "Kék" },
-  { code: "#2563eb", label: "Kék (sötét)" },
-  { code: "#1d4ed8", label: "Kék (nagyon sötét)" },
-
-  // Indigó
-  { code: "#6366f1", label: "Indigó" },
-  { code: "#4f46e5", label: "Indigó (sötét)" },
-  { code: "#4338ca", label: "Indigó (nagyon sötét)" },
-
-  // Lila / Violet
-  { code: "#8b5cf6", label: "Lila" },
-  { code: "#7c3aed", label: "Lila (sötét)" },
-  { code: "#6d28d9", label: "Lila (nagyon sötét)" },
-
-  // Rózsaszín
-  { code: "#ec4899", label: "Rózsaszín" },
-  { code: "#db2777", label: "Rózsaszín (sötét)" },
-  { code: "#be185d", label: "Rózsaszín (nagyon sötét)" },
-
-  // Piros
-  { code: "#ef4444", label: "Piros" },
-  { code: "#dc2626", label: "Piros (sötét)" },
-  { code: "#b91c1c", label: "Piros (nagyon sötét)" },
-
-  // Narancs
-  { code: "#f97316", label: "Narancs" },
-  { code: "#ea580c", label: "Narancs (sötét)" },
-  { code: "#c2410c", label: "Narancs (nagyon sötét)" },
-
-  // Borostyán (Amber)
-  { code: "#f59e0b", label: "Borostyán" },
-  { code: "#d97706", label: "Borostyán (sötét)" },
-  { code: "#b45309", label: "Borostyán (nagyon sötét)" }
-];
 
 // ---------------------------
 // Excel-szerű színválasztó (v5.22.1)
@@ -1951,198 +2071,13 @@ function renderObjectTypesTable() {
 }
 
 
-async function refreshFilterData() {
-  _allMarkersCache = filterShowDeleted ? await DB.getAllMarkers() : await DB.getAllMarkersActive();
-  fillFilterCombos();
+async async function refreshFilterData() {
+  _allMarkersCache = filterShowDeleted
+    ? await DB.getAllMarkers()
+    : await DB.getAllMarkersActive();
+  await fillFilterCombos();
   applyFilter();
 }
 
 
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("btnFilter").addEventListener("click", openFilterModal);
-  document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
 
-  const btnSettings = document.getElementById("btnSettings");
-  if (btnSettings) btnSettings.addEventListener("click", openSettingsModal);
-  const btnSettingsClose = document.getElementById("btnSettingsClose");
-  if (btnSettingsClose) btnSettingsClose.addEventListener("click", closeSettingsModal);
-
-  // oldalsó menü kattintás
-  document.querySelectorAll("#settingsModal .settings-nav-item").forEach((b) => {
-    b.addEventListener("click", () => setSettingsPage(b.dataset.page));
-  });
-
-  // overlay kattintás: csak ha a háttérre kattint (nem a tartalomra)
-  const settingsModal = document.getElementById("settingsModal");
-  if (settingsModal) {
-    settingsModal.addEventListener("click", (e) => {
-      if (e.target === settingsModal) closeSettingsModal();
-    });
-  }
-
-  const btnShowAll = document.getElementById("btnShowAll");
-  if (btnShowAll) {
-    btnShowAll.addEventListener("click", () => {
-      clearMapMarkerVisibilityFilter();
-      showHint("Összes marker megjelenítve.");
-    });
-  }
-
-    const showBtn = document.getElementById("filterShowBtn");
-  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
-  if (showBtn) {
-    showBtn.disabled = true;
-    showBtn.addEventListener("click", () => {
-      // v5.15: Megjelenítés
-      // - ha van kijelölés: csak a kijelölt (nem törölt) markerek maradjanak a térképen
-      // - ha nincs kijelölés: a táblázat aktuális (szűrt) tartalma alapján
-
-      const selectedIds = Array.from(selectedFilterMarkerIds)
-        .map((x) => Number(x))
-        .filter((x) => Number.isFinite(x));
-
-      let idsToShow = [];
-      if (selectedIds.length > 0) {
-        // törölt elemeket ne próbáljuk megjeleníteni (amúgy sincsenek a térképen)
-        const deletedInSelection = new Set(
-          Array.from(document.querySelectorAll('#sfList tr.row-selected.row-deleted'))
-            .map((tr) => Number(tr.dataset.markerId))
-            .filter((x) => Number.isFinite(x))
-        );
-        idsToShow = selectedIds.filter((id) => !deletedInSelection.has(id));
-
-        // Ha csak törölt elemek vannak kijelölve, akkor ne zárjuk be az ablakot
-        if (idsToShow.length === 0) {
-          showHint("Nem lehet megjeleníteni a törölt markereket.");
-          return;
-        }
-
-        if (deletedInSelection.size > 0) {
-          showHint("A törölt markereket nem lehet megjeleníteni – kihagyva.");
-        }
-      } else {
-        idsToShow = getIdsFromCurrentFilterTable({ includeDeleted: false });
-        if (idsToShow.length === 0) {
-          showHint("Nincs megjeleníthető (nem törölt) marker a listában.");
-          return;
-        }
-      }
-
-      applyMapMarkerVisibility(idsToShow);
-      // A térkép legyen úgy méretezve, hogy az összes megjelenített marker látszódjon
-      fitMapToMarkersByIds(idsToShow);
-      closeFilterModal();
-    });
-  }
-
-  const clearBtn = document.getElementById("filterClearSelectionBtn");
-  if (clearBtn) {
-    clearBtn.disabled = true;
-    clearBtn.addEventListener("click", clearAllFilterSelections);
-  }
-
-  const photosBtn = document.getElementById("filterPhotosBtn");
-  if (photosBtn) {
-    photosBtn.disabled = true;
-    photosBtn.addEventListener("click", async () => {
-      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
-      if (rows.length !== 1) return;
-
-      const tr = rows[0];
-      const id = Number(tr.dataset.markerId);
-      const uuid = tr.dataset.markerUuid || "";
-      if (!uuid) return;
-
-      // Ugyanaz a galéria modal, mint a marker popup "Fotók" gombjánál
-      openPhotoGallery(uuid, Number.isFinite(id) ? idText(id) : "Fotók");
-    });
-  }
-
-  const editBtn = document.getElementById("filterEditBtn");
-  if (editBtn) {
-    editBtn.disabled = true;
-    editBtn.addEventListener("click", async () => {
-      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
-      if (rows.length !== 1) return;
-
-      const tr = rows[0];
-      if (tr.classList.contains('row-deleted')) return;
-
-      const id = Number(tr.dataset.markerId);
-      if (!Number.isFinite(id)) return;
-
-      try {
-        const m = await DB.getMarkerById(id);
-        if (!m || m.deletedAt) {
-          showHint("A törölt marker nem módosítható.");
-          return;
-        }
-        closeFilterModal();
-        openEditModal(m);
-      } catch (err) {
-        console.error("filter edit open failed", err);
-        alert("Nem sikerült betölteni a marker adatait.");
-      }
-    });
-  }
-
-  const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
-  if (deleteBtn) {
-    deleteBtn.disabled = true;
-    deleteBtn.addEventListener("click", async () => {
-      const ids = Array.from(selectedFilterMarkerIds)
-        .map((x) => Number(x))
-        .filter((x) => Number.isFinite(x));
-
-      if (ids.length === 0) {
-        alert("Nincs kijelölt sor.");
-        return;
-      }
-
-      const count = ids.length;
-      const ok = confirm(
-        `Biztosan törlöd (soft delete) a kijelölt ${count} db marker(eke)t? A töröltek később megjeleníthetők.`
-      );
-      if (!ok) return;
-
-      try {
-        // Törlés az adatbázisból (soft delete) + eltávolítás a térképről
-        for (const id of ids) {
-          await DB.softDeleteMarker(id);
-
-          const leafletMarker = markerLayers.get(id);
-          if (leafletMarker) {
-            map.removeLayer(leafletMarker);
-            markerLayers.delete(id);
-          }
-
-          if (activeMapFilterIds instanceof Set) activeMapFilterIds.delete(Number(id));
-        }
-
-        updateShowAllButtonVisibility();
-
-        // UI frissítés: cache frissítés + kiválasztások törlése + táblázat újraszűrése
-        // (különben törlés után a táblázatban még látszódhatnak sorok a cache miatt)
-        _allMarkersCache = filterShowDeleted ? await DB.getAllMarkers() : await DB.getAllMarkersActive();
-        selectedFilterMarkerIds.clear();
-        updateFilterShowButtonState();
-        applyFilter();
-      } catch (e) {
-        console.error(e);
-        alert("Hiba történt a törlés közben.");
-      }
-    });
-  }
-  if (showDeletedBtn) {
-    showDeletedBtn.addEventListener("click", async () => {
-      filterShowDeleted = !filterShowDeleted;
-      showDeletedBtn.textContent = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
-      clearAllFilterSelections();
-      await refreshFilterData();
-    });
-  }
-
-  document.getElementById("sfAddress").addEventListener("input", applyFilter);
-  document.getElementById("sfType").addEventListener("change", applyFilter);
-  document.getElementById("sfStatus").addEventListener("change", applyFilter);
-});

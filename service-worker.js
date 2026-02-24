@@ -6,7 +6,7 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "0.4.1" és itt: CACHE_VERSION = "v0.4.1"
-const CACHE_VERSION = "v5.24.1";
+const CACHE_VERSION = "v5.24.2";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
@@ -23,7 +23,13 @@ const CORE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE))
+      .then(async (cache) => {
+        // addAll fails the whole install if ONE file is missing (e.g. when
+        // GitHub Pages hasn't refreshed yet). Add items one-by-one instead.
+        await Promise.allSettled(
+          CORE.map((u) => cache.add(u).catch(() => null))
+        );
+      })
       .then(() => self.skipWaiting())
   );
 });

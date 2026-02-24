@@ -1,4 +1,4 @@
-const APP_VERSION = "5.24.1";
+const APP_VERSION = "5.24.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -229,10 +229,15 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-function nominatimReverseJSONP(lat, lng, { timeoutMs = 8000 } = {}) {
+// Nominatim has strict usage limits. Throttle requests to avoid bursts
+// (and the 4xx blocks you can see in DevTools).
+let __cm_nominatim_lastCallAt = 0;
+let __cm_nominatim_inflight = null;
+
+function nominatimReverseJSONP(lat, lng, { timeoutMs = 8000, minGapMs = 1100, retries = 1 } = {}) {
   // Nominatim does not reliably send CORS headers, so browser fetch() can be blocked.
   // JSONP is supported via json_callback and works in Chrome/Edge without CORS.
-  return new Promise((resolve, reject) => {
+  const runOnce = () => new Promise((resolve, reject) => {
     const cbName = "__cm_nominatim_cb_" + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
     const cleanup = () => {
@@ -269,6 +274,30 @@ function nominatimReverseJSONP(lat, lng, { timeoutMs = 8000 } = {}) {
 
     document.head.appendChild(script);
   });
+
+  const now = Date.now();
+  const waitMs = Math.max(0, (__cm_nominatim_lastCallAt + minGapMs) - now);
+
+  const doCall = () => {
+    __cm_nominatim_lastCallAt = Date.now();
+    __cm_nominatim_inflight = runOnce()
+      .catch((err) => {
+        if (retries > 0) {
+          return new Promise((res) => setTimeout(res, minGapMs)).then(() =>
+            nominatimReverseJSONP(lat, lng, { timeoutMs, minGapMs, retries: retries - 1 })
+          );
+        }
+        throw err;
+      })
+      .finally(() => {
+        __cm_nominatim_inflight = null;
+      });
+    return __cm_nominatim_inflight;
+  };
+
+  if (__cm_nominatim_inflight) return __cm_nominatim_inflight;
+  if (waitMs > 0) return new Promise((res) => setTimeout(res, waitMs)).then(doCall);
+  return doCall();
 }
 
 function showHint(text, ms = 2500) {

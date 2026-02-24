@@ -8,6 +8,9 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2c7be5">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
   <style>
@@ -411,7 +414,41 @@
   /* Filter table row selection */
   #sfTable tbody tr.selected { background: rgba(0, 123, 255, 0.15); }
   .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-</style>
+
+    /* Responsive: mobil / tablet */
+    @media (max-width: 700px){
+      .toolbar{
+        left: 10px;
+        top: 10px;
+        right: 10px;
+        width: auto;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 8px;
+      }
+      .btn{
+        padding: 12px 12px;
+        border-radius: 14px;
+      }
+      #hint{ top: 74px; }
+
+      /* Settings modal: mobilon a bal menü felül legyen */
+      #settingsModal .settings-shell{ flex-direction: column; }
+      #settingsModal .settings-nav{
+        width: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+        border-right: 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      #settingsModal .settings-nav-item{
+        padding: 10px 10px;
+        border-radius: 14px;
+      }
+    }
+
+  </style>
 </head>
 
 <body>

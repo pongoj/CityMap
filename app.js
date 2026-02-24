@@ -2071,7 +2071,7 @@ function renderObjectTypesTable() {
 }
 
 
-async async function refreshFilterData() {
+async function refreshFilterData() {
   _allMarkersCache = filterShowDeleted
     ? await DB.getAllMarkers()
     : await DB.getAllMarkersActive();

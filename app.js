@@ -1,4 +1,4 @@
-const APP_VERSION = "5.26";
+const APP_VERSION = "5.25.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -19,42 +19,24 @@ let editingMarkerId = null;
 let editingMarkerUuid = null;
 
 // Térképi szűrés UI ("Összes megjelenítése" gomb)
-function getVisibleMarkerBounds() {
-  if (!map) return null;
-  const latlngs = [];
-  for (const [, mk] of markerLayers.entries()) {
-    if (mk && map.hasLayer(mk)) {
-      const ll = mk.getLatLng?.();
-      if (ll) latlngs.push(ll);
-    }
-  }
-  if (latlngs.length === 0) return null;
-  return L.latLngBounds(latlngs);
-}
-
-function fitMapToVisibleMarkers() {
-  const b = getVisibleMarkerBounds();
-  if (!b) return;
-  try {
-    map.fitBounds(b, { padding: [30, 30] });
-  } catch (_) {
-    // no-op
-  }
-}
-
-function isMapFiltered() {
-  if (!(activeMapFilterIds instanceof Set)) return false;
-  for (const id of markerLayers.keys()) {
-    if (!activeMapFilterIds.has(Number(id))) return true;
-  }
-  return markerLayers.size > 0 && activeMapFilterIds.size === 0;
-}
-
 function updateShowAllButtonVisibility() {
   const btn = document.getElementById("btnShowAll");
   if (!btn) return;
 
-  btn.style.display = isMapFiltered() ? "inline-block" : "none";
+  // Akkor tekintjük szűrtnek a térképet, ha van aktív filter SET,
+  // és a jelenlegi aktív marker-készletből NEM mindegyik szerepel a filterben.
+  let filtered = false;
+  if (activeMapFilterIds instanceof Set) {
+    for (const id of markerLayers.keys()) {
+      if (!activeMapFilterIds.has(Number(id))) {
+        filtered = true;
+        break;
+      }
+    }
+    // Ha a filter üres, az is "szűrt" (0 marker látszik), ha van egyáltalán marker.
+    if (!filtered && markerLayers.size > 0 && activeMapFilterIds.size === 0) filtered = true;
+  }
+  btn.style.display = filtered ? "inline-block" : "none";
 }
 
 function clearMapMarkerVisibilityFilter() {
@@ -64,11 +46,6 @@ function clearMapMarkerVisibilityFilter() {
     if (map && mk && !map.hasLayer(mk)) mk.addTo(map);
   }
   updateShowAllButtonVisibility();
-}
-
-function showAllMarkersAndFit() {
-  clearMapMarkerVisibilityFilter();
-  fitMapToVisibleMarkers();
 }
 
 // v5.11: új markerhez fényképek hozzárendelése mentés előtt (draft uuid)
@@ -1032,12 +1009,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 
-  document.getElementById("btnFilter").addEventListener("click", () => {
-    // Ha épp térképi megjelenítés-szűrés aktív (csak kijelöltek / táblázat tartalma),
-    // akkor a Szűrés gomb úgy viselkedjen, mintha "Összes megjelenítése" történt volna.
-    if (isMapFiltered()) showAllMarkersAndFit();
-    openFilterModal();
-  });
+  document.getElementById("btnFilter").addEventListener("click", openFilterModal);
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
 
   const btnSettings = document.getElementById("btnSettings");
@@ -1061,7 +1033,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnShowAll = document.getElementById("btnShowAll");
   if (btnShowAll) {
     btnShowAll.addEventListener("click", () => {
-      showAllMarkersAndFit();
+      clearMapMarkerVisibilityFilter();
       showHint("Összes marker megjelenítve.");
     });
   }

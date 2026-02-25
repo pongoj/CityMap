@@ -1,4 +1,4 @@
-const APP_VERSION = "5.31";
+const APP_VERSION = "5.32";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1276,6 +1276,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnFilterClose = document.getElementById("btnFilterClose");
   if (btnFilterClose) btnFilterClose.addEventListener("click", closeHeaderFilterPops);
 
+  const sfClearBtn = document.getElementById("sfClearAllFiltersBtn");
+  if (sfClearBtn) sfClearBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const a = document.getElementById("sfAddress");
+    const t = document.getElementById("sfType");
+    const s = document.getElementById("sfStatus");
+    if (a) a.value = "";
+    if (t) t.value = "";
+    if (s) s.value = "";
+    closeHeaderFilterPops();
+    applyFilter();
+  });
+
 });
 
 
@@ -1661,6 +1674,21 @@ const tb = document.getElementById("sfList");
 	  updateFilterShowButtonState();
 }
 
+
+function updateHeaderFilterIndicators() {
+  const aVal = (document.getElementById("sfAddress")?.value || "").trim();
+  const tVal = (document.getElementById("sfType")?.value || "").trim();
+  const sVal = (document.getElementById("sfStatus")?.value || "").trim();
+
+  const addrTh = document.getElementById("sfAddressTh");
+  const typeTh = document.getElementById("sfTypeTh");
+  const statusTh = document.getElementById("sfStatusTh");
+
+  if (addrTh) addrTh.classList.toggle("active", aVal.length > 0);
+  if (typeTh) typeTh.classList.toggle("active", tVal.length > 0);
+  if (statusTh) statusTh.classList.toggle("active", sVal.length > 0);
+}
+
 function applyFilter() {
   const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
 
@@ -1704,6 +1732,8 @@ function applyFilter() {
 
     return addrOk && typeOk && statusOk;
   });
+
+  updateHeaderFilterIndicators();
 
   renderFilterList(res);
 }

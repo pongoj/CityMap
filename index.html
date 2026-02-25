@@ -397,6 +397,18 @@
     /* On narrow screens keep buttons readable */
     .modal-actions.marker-actions .left-actions{ flex: 1 1 auto; }
     .btn-ghost{ background:#f3f4f6; color:#111827; }
+
+    .btn-icon{ padding:8px 10px; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+    .btn-icon .ico{ width:18px; height:18px; }
+
+    /* Aktív szűrő jelzése az oszlopfejlécben */
+    #filterModal .th-filter.active .th-filter-btn{
+      background:#e0f2fe;
+      opacity: 1;
+    }
+    #filterModal .th-filter.active .th-filter-btn .ico{ color:#0284c7; }
+    #filterModal .th-filter.active span{ font-weight:800; }
+
     .btn-save{ background:#111827; color:#fff; }
 
     /* Photo gallery */
@@ -645,6 +657,10 @@
     <symbol id="i-filter" viewBox="0 0 24 24">
       <path d="M3 5h18l-7 8v5l-4 2v-7L3 5z" fill="currentColor"/>
     </symbol>
+    <symbol id="i-filter-x" viewBox="0 0 24 24">
+      <path d="M3 5h18l-7 8v5l-4 2v-7L3 5z" fill="currentColor"/>
+      <path d="M16.5 8.5l4 4m0-4l-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
     <symbol id="i-settings" viewBox="0 0 24 24">
       <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.04 7.04 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.22-1.12.52-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.41 1.05.73 1.63.94l.36 2.54a.5.5 0 0 0 .49.42h3.8a.5.5 0 0 0 .49-.42l.36-2.54c.58-.22 1.12-.52 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" fill="currentColor"/>
     </symbol>
@@ -726,7 +742,12 @@
     <div class="modal-content filter-modal">
       <div class="settings-header">
         <div style="font-weight:800; font-size:20px;">Szűrés</div>
-        <button class="btn btn-ghost" id="btnFilterClose" type="button">Bezár</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-ghost btn-icon" id="sfClearAllFiltersBtn" type="button" title="Szűrések törlése" aria-label="Szűrések törlése">
+            <svg class="ico" aria-hidden="true"><use href="#i-filter-x"></use></svg>
+          </button>
+          <button class="btn btn-ghost" id="btnFilterClose" type="button">Bezár</button>
+        </div>
       </div>
 
       <div class="settings-shell">
@@ -764,7 +785,7 @@
                   </th>
                   <th>ID</th>
                   <th>
-                    <div class="th-filter">
+                    <div class="th-filter" id="sfAddressTh">
                       <span>Cím</span>
                       <button class="th-filter-btn" id="sfAddressFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
                         <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
@@ -775,7 +796,7 @@
                     </div>
                   </th>
                   <th>
-                    <div class="th-filter">
+                    <div class="th-filter" id="sfTypeTh">
                       <span>Típus</span>
                       <button class="th-filter-btn" id="sfTypeFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
                         <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
@@ -786,7 +807,7 @@
                     </div>
                   </th>
                   <th>
-                    <div class="th-filter">
+                    <div class="th-filter" id="sfStatusTh">
                       <span>Állapot</span>
                       <button class="th-filter-btn" id="sfStatusFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
                         <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>

@@ -1,4 +1,4 @@
-const APP_VERSION = "5.28.1";
+const APP_VERSION = "5.28.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1574,13 +1574,18 @@ function applyFilter() {
   const tCode = (typeSel?.value || "").trim();
   const sCode = (statusSel?.value || "").trim();
 
-  const tLabel = (typeSel && typeSel.selectedIndex >= 0)
+  let tLabel = (typeSel && typeSel.selectedIndex >= 0)
     ? (typeSel.options[typeSel.selectedIndex]?.textContent || "").trim()
     : "";
-
-  const sLabel = (statusSel && statusSel.selectedIndex >= 0)
+  let sLabel = (statusSel && statusSel.selectedIndex >= 0)
     ? (statusSel.options[statusSel.selectedIndex]?.textContent || "").trim()
     : "";
+
+  // "Összes" opció esetén ne szűrjünk label alapján sem
+  if (!tCode || tCode === "") tLabel = "";
+  if (!sCode || sCode === "") sLabel = "";
+  if (tLabel === "Összes") tLabel = "";
+  if (sLabel === "Összes") sLabel = "";
 
   const res = (_allMarkersCache || []).filter((m) => {
     const addr = String(m?.address || "").toLowerCase();

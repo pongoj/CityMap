@@ -1,4 +1,4 @@
-const APP_VERSION = "5.28.4";
+const APP_VERSION = "5.29";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1358,7 +1358,19 @@ const clearBtn = document.getElementById("filterClearSelectionBtn");
     }
   }
 
-  // v5.17.1: Fotók gomb csak akkor aktív, ha pontosan 1 sor van kijelölve ÉS van hozzárendelt fotó
+  
+  // v5.29: overlay szerkesztés ikon megjelenítése csak akkor, ha pontosan 1 (nem törölt) sor kijelölt
+  const selectedRowsForOverlay = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
+  document.querySelectorAll('#sfList .sf-edit-overlay-btn').forEach((b) => (b.style.display = 'none'));
+  if (selectedRowsForOverlay.length === 1) {
+    const tr = selectedRowsForOverlay[0];
+    if (!tr.classList.contains('row-deleted')) {
+      const b = tr.querySelector('.sf-edit-overlay-btn');
+      if (b) b.style.display = 'flex';
+    }
+  }
+
+// v5.17.1: Fotók gomb csak akkor aktív, ha pontosan 1 sor van kijelölve ÉS van hozzárendelt fotó
   // (törölt marker esetén is aktív lehet, mert a fotók nem törlődnek a soft delete-tel)
   if (photosBtn) {
     const selectedRows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
@@ -1531,7 +1543,31 @@ const tb = document.getElementById("sfList");
 	        if (!markerId) return;
 	        toggleFilterRowSelection(markerId, tr);
 	      });
+	
+	    // v5.29: overlay "Objektum módosítása" ikon az ID mezőn (csak 1 kijelölésnél fog látszani)
+	    const overlayEditBtn = tr.querySelector('.sf-edit-overlay-btn');
+	    if (overlayEditBtn) {
+	      overlayEditBtn.addEventListener('click', async (ev) => {
+	        ev.stopPropagation();
+	        if (tr.classList.contains('row-deleted')) return;
+	        const id = Number(tr.dataset.markerId);
+	        if (!Number.isFinite(id)) return;
+	        try {
+	          const m = await DB.getMarkerById(id);
+	          if (!m || m.deletedAt) {
+	            showHint("A törölt marker nem módosítható.");
+	            return;
+	          }
+	          closeFilterModal();
+	          openEditModal(m);
+	        } catch (err) {
+	          console.error("filter edit open failed", err);
+	          alert("Nem sikerült betölteni a marker adatait.");
+	        }
+	      });
 	    }
+
+    }
 
 	    // 1 kattintás: kijelölés (több sor is lehet)
 	    tr.addEventListener("click", (ev) => {

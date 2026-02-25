@@ -559,6 +559,29 @@
     }
 
 
+
+    /* v5.29: Szűrés táblázat - sorhoz kötött (overlay) módosítás ikon az ID mezőn */
+    .sf-id-cell{ position:relative; }
+    .sf-edit-overlay-btn{
+      position:absolute;
+      top:50%;
+      left:6px;
+      transform:translateY(-50%);
+      width:30px;
+      height:30px;
+      border-radius:999px;
+      border:none;
+      background:#0f172a;
+      color:#fff;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      box-shadow:0 6px 16px rgba(0,0,0,.22);
+      cursor:pointer;
+      z-index:5;
+    }
+    .sf-edit-overlay-btn:active{ transform:translateY(-50%) scale(0.96); }
+    .sf-edit-overlay-btn .ico{ width:16px; height:16px; }
 </style>
 </head>
 
@@ -576,6 +599,9 @@
     </symbol>
     <symbol id="i-trash" viewBox="0 0 24 24">
       <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM7 9h2v10H7V9z" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24">
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/>
     </symbol>
     <symbol id="i-showall" viewBox="0 0 24 24">
       <path d="M12 5c5.5 0 9.7 4.5 10 7-.3 2.5-4.5 7-10 7S2.3 14.5 2 12c.3-2.5 4.5-7 10-7zm0 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" fill="currentColor"/>
@@ -666,8 +692,7 @@
             <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
             <button class="btn btn-ghost" id="filterClearSelectionBtn" disabled>Kijelölés megszüntetése</button>
 <button class="btn btn-ghost" id="filterPhotosBtn" disabled>Fotók</button>
-            <button class="btn btn-ghost" id="filterEditBtn" disabled>Objektum módosítása</button>
-            <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
+                        <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
           </div>
         </div>
 

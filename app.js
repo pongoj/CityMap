@@ -1,4 +1,4 @@
-const APP_VERSION = "5.30.2";
+const APP_VERSION = "5.30.3";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1460,16 +1460,14 @@ function selectOnlyFilterRow(markerId, trEl) {
   const id = Number(markerId);
   if (!Number.isFinite(id)) return;
 
-  // Ha már pontosan ez az egy van kijelölve, ne "kapcsolgassuk" le
+  // v5.30.3: ha már pontosan ez az egy van kijelölve és újra rákattintunk,
+  // akkor vegyük vissza a kijelölést (toggle off).
   if (selectedFilterMarkerIds.size === 1 && selectedFilterMarkerIds.has(id)) {
-    if (trEl) {
-      const cb = trEl.querySelector('input.row-select');
-      if (cb) cb.checked = true;
-    }
+    clearAllFilterSelections();
     return;
   }
 
-  selectedFilterMarkerIds.clear();
+selectedFilterMarkerIds.clear();
   document.querySelectorAll('#sfList tr.row-selected').forEach(tr => tr.classList.remove('row-selected'));
   document.querySelectorAll('#sfList input.row-select').forEach(cb => cb.checked = false);
 

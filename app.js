@@ -1,11 +1,30 @@
-const APP_VERSION = "5.29.1";
+const APP_VERSION = "5.30";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
 let filterShowDeleted = false; // Szűrés listában töröltek megjelenítése
 
-// v5.17.1: szűrés ablak "Fotók" gomb engedélyezése aszinkron fotószám ellenőrzéssel
-let filterPhotosBtnCheckToken = 0;
+const photoCountCache = new Map(); // uuid -> number
+const photoCountInFlight = new Map(); // uuid -> Promise<number>
+
+function getPhotoCountCached(uuid){
+  if (!uuid) return Promise.resolve(0);
+  if (photoCountCache.has(uuid)) return Promise.resolve(photoCountCache.get(uuid));
+  if (photoCountInFlight.has(uuid)) return photoCountInFlight.get(uuid);
+  const p = Promise.resolve(DB.countPhotosByMarkerUuid(uuid))
+    .then((cnt) => {
+      const n = Number(cnt) || 0;
+      photoCountCache.set(uuid, n);
+      return n;
+    })
+    .catch(() => 0)
+    .finally(() => {
+      photoCountInFlight.delete(uuid);
+    });
+  photoCountInFlight.set(uuid, p);
+  return p;
+}
+
 
 // v5.15: térképi megjelenítés szűrése (csak kijelöltek / táblázat tartalma)
 let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív marker látszik
@@ -115,7 +134,16 @@ function closeSimpleModal(el) {
   el.style.display = "none";
 }
 
-async function openPhotoGallery(markerUuid, titleText) {
+async 
+function openPhotoGalleryForMarker(marker) {
+  if (!marker) return;
+  const uuid = marker.uuid || marker.markerUuid || marker.markerUUID;
+  if (!uuid) return;
+  const title = `${idText(marker.id)} – ${marker.address || ""}`;
+  openPhotoGallery(uuid, title);
+}
+
+function openPhotoGallery(markerUuid, titleText) {
   try {
     const updatePopupPhotoCountUI = async () => {
       try {
@@ -1117,24 +1145,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     clearBtn.disabled = true;
     clearBtn.addEventListener("click", clearAllFilterSelections);
   }
-
-  const photosBtn = document.getElementById("filterPhotosBtn");
-  if (photosBtn) {
-    photosBtn.disabled = true;
-    photosBtn.addEventListener("click", async () => {
-      const rows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
-      if (rows.length !== 1) return;
-
-      const tr = rows[0];
-      const id = Number(tr.dataset.markerId);
-      const uuid = tr.dataset.markerUuid || "";
-      if (!uuid) return;
-
-      // Ugyanaz a galéria modal, mint a marker popup "Fotók" gombjánál
-      openPhotoGallery(uuid, Number.isFinite(id) ? idText(id) : "Fotók");
-    });
-  }
-
   const editBtn = document.getElementById("filterEditBtn");
   if (editBtn) {
     editBtn.disabled = true;
@@ -1284,6 +1294,7 @@ function userIconForZoom(zoom) {
 let _allMarkersCache = [];
 
 function openFilterModal() {
+  photoCountCache.clear();
   document.getElementById("filterModal").style.display = "flex";
   document.getElementById("sfAddress").value = "";
 
@@ -1339,8 +1350,7 @@ function updateFilterShowButtonState() {
   const showBtn = document.getElementById("filterShowBtn");
 const clearBtn = document.getElementById("filterClearSelectionBtn");
   const deleteBtn = document.getElementById("filterDeleteSelectedBtn");
-  const photosBtn = document.getElementById("filterPhotosBtn");
-  const editBtn = document.getElementById("filterEditBtn");
+const editBtn = document.getElementById("filterEditBtn");
 
   // v5.15: Megjelenítés akkor is működjön, ha nincs kijelölés (ilyenkor a táblázat aktuális sorai alapján)
   if (showBtn) showBtn.disabled = !tableHasRows;
@@ -1369,33 +1379,6 @@ const clearBtn = document.getElementById("filterClearSelectionBtn");
       if (b) b.style.display = 'flex';
     }
   }
-
-// v5.17.1: Fotók gomb csak akkor aktív, ha pontosan 1 sor van kijelölve ÉS van hozzárendelt fotó
-  // (törölt marker esetén is aktív lehet, mert a fotók nem törlődnek a soft delete-tel)
-  if (photosBtn) {
-    const selectedRows = Array.from(document.querySelectorAll('#sfList tr.row-selected'));
-    if (selectedRows.length !== 1) {
-      photosBtn.disabled = true;
-    } else {
-      const tr = selectedRows[0];
-      const uuid = tr?.dataset?.markerUuid || "";
-      if (!uuid) {
-        photosBtn.disabled = true;
-      } else {
-        // alapból tiltjuk, amíg meg nem jön a DB-ből a fotószám (race-safe tokennel)
-        photosBtn.disabled = true;
-        const myToken = ++filterPhotosBtnCheckToken;
-        // db.js-ben a publikus függvény neve: countPhotosByMarkerUuid
-        Promise.resolve(DB.countPhotosByMarkerUuid(uuid))
-          .then((count) => {
-            if (myToken !== filterPhotosBtnCheckToken) return;
-            photosBtn.disabled = !(Number(count) > 0);
-          })
-          .catch(() => {
-            if (myToken !== filterPhotosBtnCheckToken) return;
-            photosBtn.disabled = true;
-          });
-      }
     }
   }
 }
@@ -1526,6 +1509,11 @@ const tb = document.getElementById("sfList");
 	    }
     tr.innerHTML = `
       <td style="text-align:center;"><input class="row-select" type="checkbox" ${selectedFilterMarkerIds.has(m.id) ? 'checked' : ''}></td>
+      <td class="sf-photo-cell">
+        <button class="sf-photo-btn" type="button" title="Fotók" aria-label="Fotók" disabled>
+          <svg class="ico" aria-hidden="true"><use href="#i-camera"></use></svg>
+        </button>
+      </td>
       <td class="sf-id-cell">
         <span class="sf-id-text">${idText(m.id)}</span>
         <button class="sf-edit-overlay-btn" type="button" title="Objektum módosítása" aria-label="Objektum módosítása">
@@ -1570,7 +1558,35 @@ const tb = document.getElementById("sfList");
 	          alert("Nem sikerült betölteni a marker adatait.");
 	        }
 	      });
-	    }
+	    
+
+        // v5.30: fotó ikon oszlop (a bal oldali "Fotók" gomb kiváltása)
+        const photoBtn = tr.querySelector('.sf-photo-btn');
+        const uuid = String(tr.dataset.markerUuid || "");
+        if (photoBtn) {
+          // kattintás: galéria megnyitása az adott markerhez (kijelölést nem módosít)
+          photoBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            const id = Number(tr.dataset.markerId);
+            if (!Number.isFinite(id)) return;
+            try {
+              const marker = await DB.getMarkerById(id);
+              if (!marker) return;
+              // ugyanazt a galéria megnyitót használjuk, mint eddig a "Fotók" gomb
+              openPhotoGalleryForMarker(marker);
+            } catch (e) {
+              console.error("openPhotoGalleryForMarker failed", e);
+              alert("Nem sikerült megnyitni a fotókat.");
+            }
+          });
+
+          // engedélyezés/halványítás fotószám alapján
+          getPhotoCountCached(uuid).then((cnt) => {
+            const has = Number(cnt) > 0;
+            photoBtn.disabled = !has;
+          });
+        }
+}
 
     }
 

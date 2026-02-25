@@ -580,7 +580,24 @@
       cursor:pointer;
       z-index:5;
     }
-    .sf-edit-overlay-btn:active{ transform:translateY(-50%) scale(0.96); }
+    
+    /* Szűrés táblázat: fotó ikon oszlop */
+    .sf-photo-cell{ text-align:center; }
+    .sf-photo-btn{
+      width:32px; height:32px; border-radius:10px;
+      border:1px solid #d8dde6;
+      background:#fff;
+      display:inline-flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      box-shadow:0 2px 6px rgba(0,0,0,.08);
+    }
+    .sf-photo-btn .ico{ width:18px; height:18px; }
+    .sf-photo-btn[disabled]{
+      opacity:.35;
+      cursor:default;
+      box-shadow:none;
+    }
+.sf-edit-overlay-btn:active{ transform:translateY(-50%) scale(0.96); }
     .sf-edit-overlay-btn .ico{ width:16px; height:16px; }
 </style>
 </head>
@@ -593,6 +610,11 @@
     </symbol>
     <symbol id="i-settings" viewBox="0 0 24 24">
       <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.04 7.04 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.22-1.12.52-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.41 1.05.73 1.63.94l.36 2.54a.5.5 0 0 0 .49.42h3.8a.5.5 0 0 0 .49-.42l.36-2.54c.58-.22 1.12-.52 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24">
+      <path d="M9 4l1.5 2H14l1.5-2H19a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4z" fill="currentColor"/>
+      <path d="M12 9a4 4 0 1 0 0 8a4 4 0 0 0 0-8z" fill="#fff" opacity=".9"/>
+      <path d="M12 10.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5z" fill="currentColor"/>
     </symbol>
     <symbol id="i-loc" viewBox="0 0 24 24">
       <path d="M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7zm0 9.5A2.5 2.5 0 1 0 12 6a2.5 2.5 0 0 0 0 5.5z" fill="currentColor"/>
@@ -691,7 +713,6 @@
           <div class="filter-actions">
             <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
             <button class="btn btn-ghost" id="filterClearSelectionBtn" disabled>Kijelölés megszüntetése</button>
-<button class="btn btn-ghost" id="filterPhotosBtn" disabled>Fotók</button>
                         <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
           </div>
         </div>
@@ -702,11 +723,12 @@
             <table class="filter-table" id="sfTable">
               <colgroup>
                 <col style="width:6%">
-                <col style="width:16%">
-                <col style="width:38%">
+                <col style="width:6%">
+                <col style="width:14%">
+                <col style="width:36%">
                 <col style="width:12%">
                 <col style="width:12%">
-                <col style="width:16%">
+                <col style="width:14%">
               </colgroup>
               <thead>
                 <tr>
@@ -715,6 +737,9 @@
                     <svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg>
                   </button>
                 </th>
+                  <th class="th-icon">
+                    <svg class="ico" aria-hidden="true"><use href="#i-camera"></use></svg>
+                  </th>
                   <th>ID</th>
                   <th>Cím</th>
                   <th>Típus</th>

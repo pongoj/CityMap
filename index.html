@@ -486,8 +486,8 @@
 
     /* v5.27: Szűrés ablak - beállításokhoz hasonló (bal oldali panel + jobb oldali táblázat) */
     .filter-modal{
-      width: min(980px, calc(100vw - 24px));
-      height: min(82vh, calc(100vh - 24px));
+      width: min(1120px, calc(100vw - 24px));
+      height: min(86vh, calc(100vh - 24px));
       padding: 0;
       overflow: hidden;
       display: flex;
@@ -508,14 +508,19 @@
       min-height: 0;
     }
     #filterModal .settings-nav{
-      width: 260px;
+      width: 280px;
       background: #f3f4f6;
       border-right: 1px solid #e5e7eb;
       padding: 10px;
       display:flex;
       flex-direction:column;
       gap:10px;
-      overflow:auto;
+      overflow:hidden;
+    }
+    /* Mobilon a bal panel görgethető legyen, ha nem fér ki */
+    @media (max-width: 700px){
+      #filterModal .settings-nav{ overflow:auto; width: 260px; }
+      .filter-modal{ width: calc(100vw - 24px); height: calc(100vh - 24px); }
     }
     #filterModal .settings-content{
       flex: 1 1 auto;

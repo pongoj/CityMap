@@ -1,4 +1,4 @@
-const APP_VERSION = "5.28";
+const APP_VERSION = "5.28.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1566,15 +1566,43 @@ const tb = document.getElementById("sfList");
 }
 
 function applyFilter() {
-  const a = document.getElementById("sfAddress").value.toLowerCase();
-  const t = document.getElementById("sfType").value;
-  const s = document.getElementById("sfStatus").value;
+  const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
 
-  const res = _allMarkersCache.filter(m =>
-    (!a || m.address.toLowerCase().includes(a)) &&
-    (!t || m.type === t) &&
-    (!s || m.status === s)
-  );
+  const typeSel = document.getElementById("sfType");
+  const statusSel = document.getElementById("sfStatus");
+
+  const tCode = (typeSel?.value || "").trim();
+  const sCode = (statusSel?.value || "").trim();
+
+  const tLabel = (typeSel && typeSel.selectedIndex >= 0)
+    ? (typeSel.options[typeSel.selectedIndex]?.textContent || "").trim()
+    : "";
+
+  const sLabel = (statusSel && statusSel.selectedIndex >= 0)
+    ? (statusSel.options[statusSel.selectedIndex]?.textContent || "").trim()
+    : "";
+
+  const res = (_allMarkersCache || []).filter((m) => {
+    const addr = String(m?.address || "").toLowerCase();
+
+    const typeOk =
+      (!tCode && !tLabel) ||
+      m?.type === tCode ||
+      m?.typeLabel === tCode ||
+      m?.type === tLabel ||
+      m?.typeLabel === tLabel;
+
+    const statusOk =
+      (!sCode && !sLabel) ||
+      m?.status === sCode ||
+      m?.statusLabel === sCode ||
+      m?.status === sLabel ||
+      m?.statusLabel === sLabel;
+
+    const addrOk = !a || addr.includes(a);
+
+    return addrOk && typeOk && statusOk;
+  });
 
   renderFilterList(res);
 }

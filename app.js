@@ -1,4 +1,4 @@
-const APP_VERSION = "5.30.1";
+const APP_VERSION = "5.30.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -134,13 +134,12 @@ function closeSimpleModal(el) {
   el.style.display = "none";
 }
 
-async 
-function openPhotoGalleryForMarker(marker) {
+async function openPhotoGalleryForMarker(marker) {
   if (!marker) return;
   const uuid = marker.uuid || marker.markerUuid || marker.markerUUID;
   if (!uuid) return;
   const title = `${idText(marker.id)} – ${marker.address || ""}`;
-  openPhotoGallery(uuid, title);
+  await openPhotoGallery(uuid, title);
 }
 
 async function openPhotoGallery(markerUuid, titleText) {

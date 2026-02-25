@@ -1,4 +1,4 @@
-const APP_VERSION = "5.29";
+const APP_VERSION = "5.29.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1526,7 +1526,12 @@ const tb = document.getElementById("sfList");
 	    }
     tr.innerHTML = `
       <td style="text-align:center;"><input class="row-select" type="checkbox" ${selectedFilterMarkerIds.has(m.id) ? 'checked' : ''}></td>
-      <td>${idText(m.id)}</td>
+      <td class="sf-id-cell">
+        <span class="sf-id-text">${idText(m.id)}</span>
+        <button class="sf-edit-overlay-btn" type="button" title="Objektum módosítása" aria-label="Objektum módosítása">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-edit"></use></svg>
+        </button>
+      </td>
       <td>${escapeHtml(m.address)}</td>
       <td>${escapeHtml(m.typeLabel)}</td>
       <td>${escapeHtml(m.statusLabel)}</td>

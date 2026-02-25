@@ -482,74 +482,7 @@
       .btn-icon{ width: 42px; height: 42px; }
     }
 
-  
-
-    /* v5.27: Szűrés ablak - beállításokhoz hasonló (bal oldali panel + jobb oldali táblázat) */
-    .filter-modal{
-      width: min(1120px, calc(100vw - 24px));
-      height: min(86vh, calc(100vh - 24px));
-      padding: 0;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    #filterModal .settings-header{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      padding: 14px 16px;
-      border-bottom: 1px solid #e5e7eb;
-      background: #fff;
-    }
-    #filterModal .settings-shell{
-      display:flex;
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-    #filterModal .settings-nav{
-      width: 280px;
-      background: #f3f4f6;
-      border-right: 1px solid #e5e7eb;
-      padding: 10px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      overflow:hidden;
-    }
-    /* Mobilon a bal panel görgethető legyen, ha nem fér ki */
-    @media (max-width: 700px){
-      #filterModal .settings-nav{ overflow:auto; width: 260px; }
-      .filter-modal{ width: calc(100vw - 24px); height: calc(100vh - 24px); }
-    }
-    #filterModal .settings-content{
-      flex: 1 1 auto;
-      min-width: 0;
-      padding: 16px;
-      display:flex;
-      flex-direction:column;
-      overflow:hidden;
-      background: #fff;
-    }
-    #filterModal .filter-section{ display:flex; flex-direction:column; gap:6px; }
-    #filterModal .filter-actions{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      margin-top: 8px;
-    }
-    #filterModal .table-scroll{
-      flex: 1 1 auto;
-      min-height: 0;
-      max-height: none; /* ne fix 360px legyen */
-    }
-    @media (max-width: 720px){
-      #filterModal .settings-shell{ flex-direction: column; }
-      #filterModal .settings-nav{ width: 100%; border-right:0; border-bottom:1px solid #e5e7eb; }
-    }
-
-
-</style>
+  </style>
 </head>
 
 <body>
@@ -626,68 +559,56 @@
   </div>
 
   
-  
   <div id="filterModal" class="modal">
-    <div class="modal-content filter-modal">
-      <div class="settings-header">
-        <div style="font-weight:800; font-size:20px;">Szűrés</div>
-        <button class="btn btn-ghost" id="btnFilterClose" type="button">Bezár</button>
+    <div class="modal-content">
+      <h3 style="margin:0 0 6px 0;">Szűrés</h3>
+
+      <label>Cím</label>
+      <input id="sfAddress" placeholder="Cím részlet">
+
+      <div class="row">
+        <div style="flex:1">
+          <label>Típus</label>
+          <select id="sfType"></select>
+        </div>
+        <div style="flex:1">
+          <label>Állapot</label>
+          <select id="sfStatus"></select>
+        </div>
       </div>
 
-      <div class="settings-shell">
-        <!-- Bal oldal: szűrési feltételek + műveletek -->
-        <div class="settings-nav filter-nav">
-          <div class="filter-section">
-            <label for="sfAddress">Cím</label>
-            <input id="sfAddress" placeholder="Cím részlet">
-          </div>
+      <div class="table-scroll" id="sfTableScroll">
+        <table class="filter-table" id="sfTable">
+          <colgroup>
+            <col style="width:6%">
+            <col style="width:16%">
+            <col style="width:38%">
+            <col style="width:12%">
+            <col style="width:12%">
+            <col style="width:16%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th></th>
+              <th>ID</th>
+              <th>Cím</th>
+              <th>Típus</th>
+              <th>Állapot</th>
+              <th>Megjegyzés</th>
+            </tr>
+          </thead>
+          <tbody id="sfList"></tbody>
+        </table>
+      </div>
 
-          <div class="filter-section">
-            <label for="sfType">Típus</label>
-            <select id="sfType"></select>
-          </div>
-
-          <div class="filter-section">
-            <label for="sfStatus">Állapot</label>
-            <select id="sfStatus"></select>
-          </div>
-
-          <div class="filter-actions">
-            <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
-            <button class="btn btn-ghost" id="filterClearSelectionBtn" disabled>Kijelölés megszüntetése</button>
-            <button class="btn btn-danger" id="filterDeleteSelectedBtn" disabled>Kijelöltek törlése</button>
-            <button class="btn btn-ghost" id="filterPhotosBtn" disabled>Fotók</button>
-            <button class="btn btn-ghost" id="filterEditBtn" disabled>Objektum módosítása</button>
-            <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
-          </div>
-        </div>
-
-        <!-- Jobb oldal: eredmény (a táblázat változatlan, csak a helye más) -->
-        <div class="settings-content filter-content">
-          <div class="table-scroll" id="sfTableScroll">
-            <table class="filter-table" id="sfTable">
-              <colgroup>
-                <col style="width:6%">
-                <col style="width:16%">
-                <col style="width:38%">
-                <col style="width:12%">
-                <col style="width:12%">
-                <col style="width:16%">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>ID</th>
-                  <th>Cím</th>
-                  <th>Típus</th>
-                  <th>Állapot</th>
-                  <th>Megjegyzés</th>
-                </tr>
-              </thead>
-              <tbody id="sfList"></tbody>
-            </table>
-          </div>
-        </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="filterClearSelectionBtn" disabled>Kijelölés megszüntetése</button>
+        <button class="btn btn-danger" id="filterDeleteSelectedBtn" disabled>Kijelöltek törlése</button>
+        <button class="btn btn-ghost" id="filterPhotosBtn" disabled>Fotók</button>
+        <button class="btn btn-ghost" id="filterEditBtn" disabled>Objektum módosítása</button>
+        <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
+        <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
+        <button class="btn btn-ghost" id="btnFilterClose">Bezár</button>
       </div>
     </div>
   </div>

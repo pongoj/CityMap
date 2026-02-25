@@ -1,4 +1,4 @@
-const APP_VERSION = "5.25";
+const APP_VERSION = "5.24.9";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -365,34 +365,6 @@ let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig k
 
 // Last known location from watchPosition (helps when getCurrentPosition fails/timeouts)
 let lastMyLocation = null; // { lat:number, lng:number, ts:number }
-
-// v5.25: GPS stabilizálás (remegés csökkentése):
-// - pontosság szűrés (accuracy > 25m esetén nem követjük térképpel)
-// - elmozdulási küszöb (3m alatt ignoráljuk a zajt)
-// - finom mozgóátlag (utolsó néhány pozíció átlaga)
-const GPS_ACCURACY_MAX_M = 25;
-const GPS_MOVE_THRESHOLD_M = 3;
-const GPS_SMOOTH_WINDOW = 5;
-
-let lastAcceptedMyLocation = null; // { lat, lng, ts }
-const myLocHistory = []; // [{lat,lng}]
-function distanceMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-function pushHistoryAndAverage(lat, lng) {
-  myLocHistory.push({ lat, lng });
-  while (myLocHistory.length > GPS_SMOOTH_WINDOW) myLocHistory.shift();
-  let sLat = 0, sLng = 0;
-  for (const p of myLocHistory) { sLat += p.lat; sLng += p.lng; }
-  return { lat: sLat / myLocHistory.length, lng: sLng / myLocHistory.length };
-}
 const myLocWaiters = new Set(); // resolves waiting for first fix
 
 async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
@@ -429,44 +401,25 @@ function startMyLocationWatch() {
 
   myLocationWatchId = navigator.geolocation.watchPosition(
     async (pos) => {
-      const latRaw = pos.coords.latitude;
-      const lngRaw = pos.coords.longitude;
-      const acc = typeof pos.coords.accuracy === "number" ? pos.coords.accuracy : 999999;
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
 
-      // Release any waiters that are waiting for first position fix
+      lastMyLocation = { lat, lng, ts: Date.now() };
+      // release any waiters that are waiting for first position fix
       if (myLocWaiters.size) {
         for (const fn of Array.from(myLocWaiters)) {
-          try { fn(true); } catch (_) {}
+          try {
+            fn(true);
+          } catch (_) {}
         }
         myLocWaiters.clear();
       }
-
-      // Pontosság szűrés: rossz accuracy esetén ne kövessük a térképpel (remegés/beltér).
-      if (acc > GPS_ACCURACY_MAX_M) {
-        // A nyers adatot elmentjük, de nem mozgatjuk a térképet.
-        lastMyLocation = { lat: latRaw, lng: lngRaw, ts: Date.now() };
-        // Markert sem frissítünk, hogy ne ugráljon rossz pontosságnál.
-        return;
-      }
-
-      // Elmozdulási küszöb: 3m alatt zajnak tekintjük.
-      if (lastAcceptedMyLocation) {
-        const d = distanceMeters(latRaw, lngRaw, lastAcceptedMyLocation.lat, lastAcceptedMyLocation.lng);
-        if (d < GPS_MOVE_THRESHOLD_M) {
-          return;
-        }
-      }
-
-      // Finom mozgóátlag a kijelzőre.
-      const sm = pushHistoryAndAverage(latRaw, lngRaw);
-      lastAcceptedMyLocation = { lat: latRaw, lng: lngRaw, ts: Date.now() };
-      lastMyLocation = { lat: sm.lat, lng: sm.lng, ts: Date.now() };
-
       const shouldFetchAddress = myLocationAddressText === "Saját hely";
-      await ensureMyLocationMarker(sm.lat, sm.lng, shouldFetchAddress);
+      await ensureMyLocationMarker(lat, lng, shouldFetchAddress);
 
-      // Folyamatos követés: csak akkor mozgatjuk a térképet, ha átment a szűrésen.
-      map.setView([sm.lat, sm.lng], map.getZoom(), { animate: false });
+      // Mindig kövesse a mozgást (gyalog/autó közben is), hogy a felvitelkor
+      // a térkép folyamatosan a jelenlegi pozíció közelében maradjon.
+      map.setView([lat, lng], map.getZoom(), { animate: false });
     },
     (err) => {
       console.warn("watchPosition error", err);

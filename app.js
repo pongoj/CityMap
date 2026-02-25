@@ -1,4 +1,4 @@
-const APP_VERSION = "5.24.8.2";
+const APP_VERSION = "5.25.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -363,6 +363,8 @@ let myLocationWatchId = null;
 let myLocationAddressText = "Saját hely";
 let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig követjük a pozíciót)
 
+let lastGeoError = null; // last geolocation error (for better messages)
+
 // Last known location from watchPosition (helps when getCurrentPosition fails/timeouts)
 let lastMyLocation = null; // { lat:number, lng:number, ts:number }
 const myLocWaiters = new Set(); // resolves waiting for first fix
@@ -395,6 +397,105 @@ if (!myLocationMarker) {
   }
 }
 
+
+
+function showGeolocationDeniedAlert() {
+  alert(
+    "A helyadatok nincsenek engedélyezve ehhez az oldalhoz.\n\n" +
+      "Kérlek engedélyezd a helyadatokat a böngésző / webhely beállításaiban (lakatszimbólum a címsorban), " +
+      "majd frissítsd az oldalt."
+  );
+}
+
+
+async function ensureGeolocationPermission({ onDeniedAlert = true } = {}) {
+  // Returns: "granted" | "prompt" | "denied" | "unknown"
+  if (!navigator.geolocation) return "unknown";
+
+  const triggerPromptOnce = async () => {
+    return await new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve({ ok: true, err: null }),
+        (err) => {
+          lastGeoError = err || null;
+          resolve({ ok: false, err: err || null });
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  };
+
+  // Prefer the Permissions API when available (not supported everywhere).
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const st = await navigator.permissions.query({ name: "geolocation" });
+      if (st && (st.state === "granted" || st.state === "prompt" || st.state === "denied")) {
+        if (st.state === "denied") {
+          if (onDeniedAlert) showGeolocationDeniedAlert();
+          return "denied";
+        }
+
+        if (st.state === "prompt") {
+          // Try to trigger the browser prompt.
+          const res = await triggerPromptOnce();
+          // If permission was denied, show a clear message.
+          if (res.err && res.err.code === 1 && onDeniedAlert) {
+            showGeolocationDeniedAlert();
+          }
+          // Re-check state after the attempt (if possible).
+          try {
+            const st2 = await navigator.permissions.query({ name: "geolocation" });
+            if (st2 && (st2.state === "granted" || st2.state === "prompt" || st2.state === "denied")) {
+              return st2.state;
+            }
+          } catch (_) {}
+          return "prompt";
+        }
+
+        return "granted";
+      }
+    }
+  } catch (e) {
+    // ignore and fall back
+  }
+
+  // Fallback: calling getCurrentPosition may trigger the permission prompt.
+  const res = await triggerPromptOnce();
+  if (res.err && res.err.code === 1 && onDeniedAlert) showGeolocationDeniedAlert();
+  return "unknown";
+}
+
+async function initMyLocationOnStartup() {
+  // Check permission every start; if not granted, ask for it (prompt).
+  const st = await ensureGeolocationPermission({ onDeniedAlert: true });
+
+  // If we can, start tracking immediately so "Saját hely" works and the map can follow the position.
+  if (st === "granted" || st === "prompt" || st === "unknown") {
+    try {
+      // Prime last location if possible; this also ensures the prompt has a visible effect.
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          lastMyLocation = { lat, lng, ts: Date.now() };
+          await ensureMyLocationMarker(lat, lng, true);
+          // Keep current zoom (no zoom-jump), but center to current position.
+          map.setView([lat, lng], map.getZoom(), { animate: false });
+          startMyLocationWatch();
+        },
+        (err) => {
+          lastGeoError = err || null;
+          // Even if we don't get a fix now, watchPosition may succeed later.
+          startMyLocationWatch();
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+      );
+    } catch (_) {
+      // ignore
+    }
+  }
+}
+
 function startMyLocationWatch() {
   if (!navigator.geolocation) return;
   if (myLocationWatchId !== null) return;
@@ -422,6 +523,7 @@ function startMyLocationWatch() {
       map.setView([lat, lng], map.getZoom(), { animate: false });
     },
     (err) => {
+      lastGeoError = err || null;
       console.warn("watchPosition error", err);
       if (myLocationWatchId !== null) {
         try {
@@ -446,45 +548,6 @@ function startMyLocationWatch() {
       timeout: 10000,
     }
   );
-}
-
-// Startup check: detect whether geolocation permission is enabled and notify the user if not.
-// Note: browsers do not allow us to "enable" permission programmatically. We can only inform.
-async function checkGeolocationPermissionOnStartup() {
-  try {
-    if (!navigator.geolocation) return;
-
-    // Prefer Permissions API when available (does NOT trigger a prompt).
-    if (navigator.permissions && navigator.permissions.query) {
-      let p;
-      try {
-        p = await navigator.permissions.query({ name: "geolocation" });
-      } catch (_) {
-        // Some browsers throw for unsupported permission names.
-        p = null;
-      }
-
-      if (p && p.state === "denied") {
-        alert(
-          "A helymeghatározás tiltva van ehhez az oldalhoz.\n\n" +
-            "Engedélyezd a böngészőben a lakatszimbólumnál (Webhely beállításai → Hely), majd frissítsd az oldalt."
-        );
-      } else if (p && p.state === "prompt") {
-        alert(
-          "A helymeghatározás még nincs engedélyezve.\n\n" +
-            "Ha a böngésző rákérdez, válaszd az Engedélyezés opciót, vagy állítsd be a lakatszimbólumnál (Webhely beállításai → Hely)."
-        );
-      }
-
-      return;
-    }
-
-    // No reliable, prompt-free way to check without Permissions API.
-    // We intentionally do nothing here to avoid an unsolicited permission prompt on page load.
-  } catch (e) {
-    // Never fail app startup due to permission checks.
-    console.warn("Geolocation permission check failed", e);
-  }
 }
 
 async function centerToMyLocation() {
@@ -513,7 +576,7 @@ async function centerToMyLocation() {
         startMyLocationWatch();
         resolve(true);
       },
-      () => resolve(false),
+      (err) => { lastGeoError = err || null; resolve(false); },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
     );
   });
@@ -859,15 +922,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   registerSW();
   checkForUpdateOnline();
 
-  // Induláskor ellenőrizzük, hogy engedélyezve van-e a helymeghatározás.
-  // (Ez nem kér engedélyt automatikusan, csak tájékoztat.)
-  await checkGeolocationPermissionOnStartup();
-
   map = L.map("map");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
+
+  // Induláskor ellenőrizzük a helyadat engedélyt, és ha kell, kérjük.
+  // (Ha tiltva van, tájékoztatunk; ha kérdéses, a böngésző felugró engedély-kérést ad.)
+  initMyLocationOnStartup();
 
   await DB.init();
 
@@ -908,12 +971,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   document.getElementById("btnMyLoc").addEventListener("click", async () => {
     const ok = await centerToMyLocation();
-    if (!ok)
-      alert(
-        "Nem sikerült lekérni a pozíciót.\n\n" +
-          "Ellenőrizd, hogy a böngészőben engedélyezve van-e a helymeghatározás (lakatszimbólum a címsorban), " +
-          "és hogy van-e GPS/jel."
-      );
+    if (ok) return;
+
+    if (lastGeoError && lastGeoError.code === 1) {
+      // PERMISSION_DENIED
+      showGeolocationDeniedAlert();
+      return;
+    }
+
+    alert(
+      "Nem sikerült lekérni a pozíciót.
+
+" +
+        "Ellenőrizd, hogy a böngészőben engedélyezve van-e a helymeghatározás (lakatszimbólum a címsorban), " +
+        "és hogy van-e GPS/jel."
+    );
   });
 
   document.getElementById("btnClear").addEventListener("click", async () => {

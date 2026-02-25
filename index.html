@@ -185,7 +185,7 @@
       background: #fff;
     }
 
-    /* v5.22.1: Excel-szerű színválasztó (popover) */
+    /* v5.28.4: Excel-szerű színválasztó (popover) */
     .color-cell{ display:flex; align-items:center; justify-content:flex-start; }
     .color-btn{
       display:flex; align-items:center; gap:8px;
@@ -201,7 +201,7 @@
     .color-dot{ width:18px; height:18px; border-radius: 6px; border:1px solid rgba(0,0,0,.15); flex: 0 0 auto; }
     .color-hex{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color:#111827; }
 
-    /* v5.23.2: közvetlen "Színek szerkesztése" ablak (Excel/Windows hangulat) */
+    /* v5.28.4: közvetlen "Színek szerkesztése" ablak (Excel/Windows hangulat) */
     .colors-editor-overlay{
       position: fixed;
       inset: 0;
@@ -665,8 +665,7 @@
           <div class="filter-actions">
             <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
             <button class="btn btn-ghost" id="filterClearSelectionBtn" disabled>Kijelölés megszüntetése</button>
-            <button class="btn btn-danger" id="filterDeleteSelectedBtn" disabled>Kijelöltek törlése</button>
-            <button class="btn btn-ghost" id="filterPhotosBtn" disabled>Fotók</button>
+<button class="btn btn-ghost" id="filterPhotosBtn" disabled>Fotók</button>
             <button class="btn btn-ghost" id="filterEditBtn" disabled>Objektum módosítása</button>
             <button class="btn btn-ghost" id="filterShowDeletedBtn">Töröltek megjelenítése</button>
           </div>
@@ -686,7 +685,11 @@
               </colgroup>
               <thead>
                 <tr>
-                  <th></th>
+                  <th class="th-icon">
+                  <button class="th-icon-btn danger" id="filterDeleteSelectedBtn" type="button" title="Kijelöltek törlése" aria-label="Kijelöltek törlése">
+                    <svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg>
+                  </button>
+                </th>
                   <th>ID</th>
                   <th>Cím</th>
                   <th>Típus</th>

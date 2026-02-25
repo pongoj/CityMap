@@ -1,4 +1,4 @@
-const APP_VERSION = "5.30.3";
+const APP_VERSION = "5.31";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1232,6 +1232,49 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("sfAddress").addEventListener("input", applyFilter);
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);
+
+  // v5.31: Szűrők az oszlopfejlécben (felugró input/select)
+  const popIds = ["sfAddressPop", "sfTypePop", "sfStatusPop"];
+  function closeHeaderFilterPops() {
+    popIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove("open");
+    });
+  }
+
+  function togglePop(popId, focusElId) {
+    const pop = document.getElementById(popId);
+    if (!pop) return;
+    const willOpen = !pop.classList.contains("open");
+    closeHeaderFilterPops();
+    if (willOpen) {
+      pop.classList.add("open");
+      const f = document.getElementById(focusElId);
+      if (f && typeof f.focus === "function") setTimeout(() => f.focus(), 0);
+    }
+  }
+
+  const bAddr = document.getElementById("sfAddressFilterBtn");
+  if (bAddr) bAddr.addEventListener("click", (e) => { e.stopPropagation(); togglePop("sfAddressPop", "sfAddress"); });
+  const bType = document.getElementById("sfTypeFilterBtn");
+  if (bType) bType.addEventListener("click", (e) => { e.stopPropagation(); togglePop("sfTypePop", "sfType"); });
+  const bStatus = document.getElementById("sfStatusFilterBtn");
+  if (bStatus) bStatus.addEventListener("click", (e) => { e.stopPropagation(); togglePop("sfStatusPop", "sfStatus"); });
+
+  popIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("click", (e) => e.stopPropagation());
+  });
+
+  document.addEventListener("click", closeHeaderFilterPops);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeHeaderFilterPops();
+  });
+
+  // Modal bezáráskor is zárjuk a felugrókat
+  const btnFilterClose = document.getElementById("btnFilterClose");
+  if (btnFilterClose) btnFilterClose.addEventListener("click", closeHeaderFilterPops);
 
 });
 

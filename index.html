@@ -60,6 +60,43 @@
         background: #f9fafb;
       }
 
+      /* Mobil helytakarékosság: kisebb fejléc */
+      #filterModal .filter-table thead th{
+        padding: 4px 8px;
+        font-size: 13px;
+      }
+      #filterModal .filter-table thead th .ico{ width:16px; height:16px; }
+
+      /* Oszlopfejléc szűrő ikon + felugró */
+      #filterModal .th-filter{ display:inline-flex; align-items:center; gap:6px; position:relative; }
+      #filterModal .th-filter-btn{
+        border:0;
+        background: transparent;
+        padding: 2px;
+        border-radius: 8px;
+        cursor: pointer;
+        opacity: .85;
+      }
+      #filterModal .th-filter-btn:hover{ background:#eef2f7; opacity:1; }
+      #filterModal .th-filter-pop{
+        position:absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 50;
+        min-width: 220px;
+        background:#fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.18);
+        padding: 10px;
+        display:none;
+      }
+      #filterModal .th-filter-pop.open{ display:block; }
+      #filterModal .th-filter-pop input,
+      #filterModal .th-filter-pop select{
+        width: 100%;
+      }
+
 	.filter-table tbody tr{ cursor: pointer; }
 	/* A celláknak külön fehér háttere van, ezért a hover/kijelölés is a TD-ken legyen */
 	.filter-table tbody tr:hover td{ background: #f3f4f6; }
@@ -695,21 +732,6 @@
       <div class="settings-shell">
         <!-- Bal oldal: szűrési feltételek + műveletek -->
         <div class="settings-nav filter-nav">
-          <div class="filter-section">
-            <label for="sfAddress">Cím</label>
-            <input id="sfAddress" placeholder="Cím részlet">
-          </div>
-
-          <div class="filter-section">
-            <label for="sfType">Típus</label>
-            <select id="sfType"></select>
-          </div>
-
-          <div class="filter-section">
-            <label for="sfStatus">Állapot</label>
-            <select id="sfStatus"></select>
-          </div>
-
           <div class="filter-actions">
             <button class="btn btn-save" id="filterShowBtn" disabled>Megjelenítés</button>
             <button class="btn btn-ghost" id="filterClearSelectionBtn" disabled>Kijelölés megszüntetése</button>
@@ -741,9 +763,39 @@
                     <svg class="ico" aria-hidden="true"><use href="#i-camera"></use></svg>
                   </th>
                   <th>ID</th>
-                  <th>Cím</th>
-                  <th>Típus</th>
-                  <th>Állapot</th>
+                  <th>
+                    <div class="th-filter">
+                      <span>Cím</span>
+                      <button class="th-filter-btn" id="sfAddressFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
+                        <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
+                      </button>
+                      <div class="th-filter-pop" id="sfAddressPop" role="dialog" aria-label="Cím szűrés">
+                        <input id="sfAddress" placeholder="Cím részlet" />
+                      </div>
+                    </div>
+                  </th>
+                  <th>
+                    <div class="th-filter">
+                      <span>Típus</span>
+                      <button class="th-filter-btn" id="sfTypeFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
+                        <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
+                      </button>
+                      <div class="th-filter-pop" id="sfTypePop" role="dialog" aria-label="Típus szűrés">
+                        <select id="sfType"></select>
+                      </div>
+                    </div>
+                  </th>
+                  <th>
+                    <div class="th-filter">
+                      <span>Állapot</span>
+                      <button class="th-filter-btn" id="sfStatusFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
+                        <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
+                      </button>
+                      <div class="th-filter-pop" id="sfStatusPop" role="dialog" aria-label="Állapot szűrés">
+                        <select id="sfStatus"></select>
+                      </div>
+                    </div>
+                  </th>
                   <th>Megjegyzés</th>
                 </tr>
               </thead>

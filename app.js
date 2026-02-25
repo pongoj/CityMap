@@ -1,8 +1,7 @@
-const APP_VERSION = "5.34";
+const APP_VERSION = "5.34.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
-\1
 
 function updateShowDeletedBtn(btn) {
   if (!btn) return;

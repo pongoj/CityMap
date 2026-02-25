@@ -2,7 +2,16 @@ const APP_VERSION = "5.34";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
-let filterShowDeleted = false; // Szűrés listában töröltek megjelenítése
+\1
+
+function updateShowDeletedBtn(btn) {
+  if (!btn) return;
+  const label = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.classList.toggle("active", !!filterShowDeleted);
+}
+// Szűrés listában töröltek megjelenítése
 
 const photoCountCache = new Map(); // uuid -> number
 const photoCountInFlight = new Map(); // uuid -> Promise<number>
@@ -1228,7 +1237,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (showDeletedBtn) {
     showDeletedBtn.addEventListener("click", async () => {
       filterShowDeleted = !filterShowDeleted;
-      showDeletedBtn.textContent = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
+      updateShowDeletedBtn(showDeletedBtn);
       clearAllFilterSelections();
       await refreshFilterData();
     });
@@ -1366,7 +1375,7 @@ function openFilterModal() {
 
   const showDelBtn = document.getElementById("filterShowDeletedBtn");
   if (showDelBtn) {
-    showDelBtn.textContent = filterShowDeleted ? "Töröltek elrejtése" : "Töröltek megjelenítése";
+    updateShowDeletedBtn(showDelBtn);
   }
 }
 

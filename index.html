@@ -747,23 +747,27 @@
       <div class="settings-header">
         <div style="font-weight:800; font-size:20px;">Szűrés</div>
         <div style="display:flex; gap:8px; align-items:center;">
+          
           <button class="btn btn-ghost btn-icon" id="filterShowBtn" type="button" title="Megjelenítés" aria-label="Megjelenítés" disabled>
             <svg class="ico" aria-hidden="true"><use href="#i-showall"></use></svg>
           </button>
           <button class="btn btn-ghost btn-icon" id="filterShowDeletedBtn" type="button" title="Töröltek megjelenítése" aria-label="Töröltek megjelenítése">
             <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
           </button>
-          <button class="btn btn-ghost btn-icon" id="sfClearAllFiltersBtn" type="button" title="Szűrések törlése" aria-label="Szűrések törlése">
+<button class="btn btn-ghost btn-icon" id="sfClearAllFiltersBtn" type="button" title="Szűrések törlése" aria-label="Szűrések törlése">
             <svg class="ico" aria-hidden="true"><use href="#i-filter-x"></use></svg>
           </button>
-          <button class="btn btn-ghost btn-icon" id="filterDeleteSelectedBtn" type="button" title="Kijelöltek törlése" aria-label="Kijelöltek törlése">
+                    <button class="btn btn-ghost btn-icon" id="filterDeleteSelectedBtn" type="button" title="Kijelöltek törlése" aria-label="Kijelöltek törlése">
             <svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg>
           </button>
           <button class="btn btn-ghost" id="btnFilterClose" type="button">Bezár</button>
         </div>
-
+      </div>
 
       <div class="settings-shell">
+        <!-- Bal oldal: szűrési feltételek + műveletek -->
+        <div class="settings-nav filter-nav">
+          <div class="filter-actions"></div>
         </div>
 
         <!-- Jobb oldal: eredmény (a táblázat változatlan, csak a helye más) -->

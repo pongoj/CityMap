@@ -1,7 +1,10 @@
-const APP_VERSION = "5.34.1";
+const APP_VERSION = "5.34.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
+
+// Szűrés listában töröltek megjelenítése (soft delete)
+let filterShowDeleted = false;
 
 function updateShowDeletedBtn(btn) {
   if (!btn) return;

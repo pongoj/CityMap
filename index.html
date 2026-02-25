@@ -675,6 +675,10 @@
     <symbol id="i-trash" viewBox="0 0 24 24">
       <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM7 9h2v10H7V9z" fill="currentColor"/>
     </symbol>
+    <symbol id="i-deselect" viewBox="0 0 24 24">
+      <path d="M5 5h10v2H7v8H5V5zm4 4h10v10H9V9zm2 2v6h6v-6h-6z" fill="currentColor"/>
+      <path d="M18.3 5.7l-12.6 12.6-1.4-1.4 12.6-12.6 1.4 1.4z" fill="currentColor"/>
+    </symbol>
     <symbol id="i-edit" viewBox="0 0 24 24">
       <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/>
     </symbol>
@@ -746,6 +750,9 @@
           <button class="btn btn-ghost btn-icon" id="sfClearAllFiltersBtn" type="button" title="Szűrések törlése" aria-label="Szűrések törlése">
             <svg class="ico" aria-hidden="true"><use href="#i-filter-x"></use></svg>
           </button>
+                    <button class="btn btn-ghost btn-icon" id="filterDeleteSelectedBtn" type="button" title="Kijelöltek törlése" aria-label="Kijelöltek törlése">
+            <svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg>
+          </button>
           <button class="btn btn-ghost" id="btnFilterClose" type="button">Bezár</button>
         </div>
       </div>
@@ -776,8 +783,8 @@
               <thead>
                 <tr>
                   <th class="th-icon">
-                  <button class="th-icon-btn danger" id="filterDeleteSelectedBtn" type="button" title="Kijelöltek törlése" aria-label="Kijelöltek törlése">
-                    <svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg>
+                  <button class="th-icon-btn" id="filterClearSelectionIconBtn" type="button" title="Kijelölés megszüntetése" aria-label="Kijelölés megszüntetése">
+                    <svg class="ico" aria-hidden="true"><use href="#i-deselect"></use></svg>
                   </button>
                 </th>
                   <th class="th-icon">

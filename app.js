@@ -1,4 +1,4 @@
-const APP_VERSION = "5.32";
+const APP_VERSION = "5.33";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1143,6 +1143,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (clearBtn) {
     clearBtn.disabled = true;
     clearBtn.addEventListener("click", clearAllFilterSelections);
+  }
+
+  const clearIconBtn = document.getElementById("filterClearSelectionIconBtn");
+  if (clearIconBtn) {
+    clearIconBtn.addEventListener("click", (e) => { e.preventDefault(); clearAllFilterSelections(); });
   }
   const editBtn = document.getElementById("filterEditBtn");
   if (editBtn) {

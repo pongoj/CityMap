@@ -1,4 +1,4 @@
-const APP_VERSION = "5.30";
+const APP_VERSION = "5.30.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -143,7 +143,7 @@ function openPhotoGalleryForMarker(marker) {
   openPhotoGallery(uuid, title);
 }
 
-function openPhotoGallery(markerUuid, titleText) {
+async function openPhotoGallery(markerUuid, titleText) {
   try {
     const updatePopupPhotoCountUI = async () => {
       try {
@@ -1377,8 +1377,6 @@ const editBtn = document.getElementById("filterEditBtn");
     if (!tr.classList.contains('row-deleted')) {
       const b = tr.querySelector('.sf-edit-overlay-btn');
       if (b) b.style.display = 'flex';
-    }
-  }
     }
   }
 }

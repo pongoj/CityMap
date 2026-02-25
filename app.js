@@ -1,4 +1,4 @@
-const APP_VERSION = "5.24.9";
+const APP_VERSION = "5.28.3";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -19,24 +19,42 @@ let editingMarkerId = null;
 let editingMarkerUuid = null;
 
 // Térképi szűrés UI ("Összes megjelenítése" gomb)
+function getVisibleMarkerBounds() {
+  if (!map) return null;
+  const latlngs = [];
+  for (const [, mk] of markerLayers.entries()) {
+    if (mk && map.hasLayer(mk)) {
+      const ll = mk.getLatLng?.();
+      if (ll) latlngs.push(ll);
+    }
+  }
+  if (latlngs.length === 0) return null;
+  return L.latLngBounds(latlngs);
+}
+
+function fitMapToVisibleMarkers() {
+  const b = getVisibleMarkerBounds();
+  if (!b) return;
+  try {
+    map.fitBounds(b, { padding: [30, 30] });
+  } catch (_) {
+    // no-op
+  }
+}
+
+function isMapFiltered() {
+  if (!(activeMapFilterIds instanceof Set)) return false;
+  for (const id of markerLayers.keys()) {
+    if (!activeMapFilterIds.has(Number(id))) return true;
+  }
+  return markerLayers.size > 0 && activeMapFilterIds.size === 0;
+}
+
 function updateShowAllButtonVisibility() {
   const btn = document.getElementById("btnShowAll");
   if (!btn) return;
 
-  // Akkor tekintjük szűrtnek a térképet, ha van aktív filter SET,
-  // és a jelenlegi aktív marker-készletből NEM mindegyik szerepel a filterben.
-  let filtered = false;
-  if (activeMapFilterIds instanceof Set) {
-    for (const id of markerLayers.keys()) {
-      if (!activeMapFilterIds.has(Number(id))) {
-        filtered = true;
-        break;
-      }
-    }
-    // Ha a filter üres, az is "szűrt" (0 marker látszik), ha van egyáltalán marker.
-    if (!filtered && markerLayers.size > 0 && activeMapFilterIds.size === 0) filtered = true;
-  }
-  btn.style.display = filtered ? "inline-block" : "none";
+  btn.style.display = isMapFiltered() ? "inline-block" : "none";
 }
 
 function clearMapMarkerVisibilityFilter() {
@@ -46,6 +64,11 @@ function clearMapMarkerVisibilityFilter() {
     if (map && mk && !map.hasLayer(mk)) mk.addTo(map);
   }
   updateShowAllButtonVisibility();
+}
+
+function showAllMarkersAndFit() {
+  clearMapMarkerVisibilityFilter();
+  fitMapToVisibleMarkers();
 }
 
 // v5.11: új markerhez fényképek hozzárendelése mentés előtt (draft uuid)
@@ -365,6 +388,35 @@ let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig k
 
 // Last known location from watchPosition (helps when getCurrentPosition fails/timeouts)
 let lastMyLocation = null; // { lat:number, lng:number, ts:number }
+
+// v5.25: GPS stabilizálás (remegés csökkentése):
+// - pontosság szűrés (accuracy > 25m esetén nem követjük térképpel)
+// - elmozdulási küszöb (3m alatt ignoráljuk a zajt)
+// - finom mozgóátlag (utolsó néhány pozíció átlaga)
+const GPS_ACCURACY_MAX_M = 25;
+const GPS_MOVE_THRESHOLD_M = 3;
+const GPS_SMOOTH_WINDOW = 5;
+
+let lastAcceptedMyLocation = null; // { lat, lng, ts }
+let lastCenteredMyLocation = null; // { lat, lng }
+const myLocHistory = []; // [{lat,lng}]
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function pushHistoryAndAverage(lat, lng) {
+  myLocHistory.push({ lat, lng });
+  while (myLocHistory.length > GPS_SMOOTH_WINDOW) myLocHistory.shift();
+  let sLat = 0, sLng = 0;
+  for (const p of myLocHistory) { sLat += p.lat; sLng += p.lng; }
+  return { lat: sLat / myLocHistory.length, lng: sLng / myLocHistory.length };
+}
 const myLocWaiters = new Set(); // resolves waiting for first fix
 
 async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
@@ -395,105 +447,70 @@ if (!myLocationMarker) {
   }
 }
 
-
-async function ensureGeolocationPermission({ onDeniedAlert = true } = {}) {
-  // Returns: "granted" | "prompt" | "denied" | "unknown"
-  if (!navigator.geolocation) return "unknown";
-
-  // Prefer the Permissions API when available (not supported everywhere).
-  try {
-    if (navigator.permissions && navigator.permissions.query) {
-      const st = await navigator.permissions.query({ name: "geolocation" });
-      if (st && (st.state === "granted" || st.state === "prompt" || st.state === "denied")) {
-        if (st.state === "denied" && onDeniedAlert) {
-          alert(
-            "A helyadatok nincsenek engedélyezve ehhez az oldalhoz.\n\n" +
-              "Kérlek engedélyezd a helyadatokat a böngésző / webhely beállításaiban, majd frissítsd az oldalt."
-          );
-        }
-        if (st.state === "prompt") {
-          // Trigger browser prompt via getCurrentPosition.
-          await new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              () => resolve(true),
-              () => resolve(false),
-              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
-          });
-        }
-        return st.state;
-      }
-    }
-  } catch (e) {
-    // ignore and fall back
-  }
-
-  // Fallback: calling getCurrentPosition triggers the permission prompt (if the browser supports it).
-  await new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      () => resolve(true),
-      () => resolve(false),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-  });
-  return "unknown";
-}
-
-async function initMyLocationOnStartup() {
-  // Check permission every start; if not granted, ask for it (prompt).
-  const st = await ensureGeolocationPermission({ onDeniedAlert: true });
-
-  // If we can, start tracking immediately so "Saját hely" works and the map can follow the position.
-  if (st === "granted" || st === "prompt" || st === "unknown") {
-    try {
-      // Prime last location if possible; this also ensures the prompt has a visible effect.
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          lastMyLocation = { lat, lng, ts: Date.now() };
-          await ensureMyLocationMarker(lat, lng, true);
-          // Keep current zoom (no zoom-jump), but center to current position.
-          map.setView([lat, lng], map.getZoom(), { animate: false });
-          startMyLocationWatch();
-        },
-        () => {
-          // Even if we don't get a fix now, watchPosition may succeed later.
-          startMyLocationWatch();
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
-      );
-    } catch (_) {
-      // ignore
-    }
-  }
-}
-
 function startMyLocationWatch() {
   if (!navigator.geolocation) return;
   if (myLocationWatchId !== null) return;
 
   myLocationWatchId = navigator.geolocation.watchPosition(
     async (pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+      const latRaw = pos.coords.latitude;
+      const lngRaw = pos.coords.longitude;
+      const acc = typeof pos.coords.accuracy === "number" ? pos.coords.accuracy : 999999;
 
-      lastMyLocation = { lat, lng, ts: Date.now() };
-      // release any waiters that are waiting for first position fix
+      // Release any waiters that are waiting for first position fix
       if (myLocWaiters.size) {
         for (const fn of Array.from(myLocWaiters)) {
-          try {
-            fn(true);
-          } catch (_) {}
+          try { fn(true); } catch (_) {}
         }
         myLocWaiters.clear();
       }
-      const shouldFetchAddress = myLocationAddressText === "Saját hely";
-      await ensureMyLocationMarker(lat, lng, shouldFetchAddress);
 
-      // Mindig kövesse a mozgást (gyalog/autó közben is), hogy a felvitelkor
-      // a térkép folyamatosan a jelenlegi pozíció közelében maradjon.
-      map.setView([lat, lng], map.getZoom(), { animate: false });
+      // Pontosság szűrés: rossz accuracy esetén ne kövessük a térképpel (remegés/beltér).
+      if (acc > GPS_ACCURACY_MAX_M) {
+        // A nyers adatot elmentjük, de nem mozgatjuk a térképet.
+        lastMyLocation = { lat: latRaw, lng: lngRaw, ts: Date.now() };
+        // Markert sem frissítünk, hogy ne ugráljon rossz pontosságnál.
+        return;
+      }
+
+      // Elmozdulási küszöb: 3m alatt zajnak tekintjük.
+      if (lastAcceptedMyLocation) {
+        const d = distanceMeters(latRaw, lngRaw, lastAcceptedMyLocation.lat, lastAcceptedMyLocation.lng);
+        if (d < GPS_MOVE_THRESHOLD_M) {
+          return;
+        }
+      }
+
+      // Finom mozgóátlag a kijelzőre.
+      const sm = pushHistoryAndAverage(latRaw, lngRaw);
+      lastAcceptedMyLocation = { lat: latRaw, lng: lngRaw, ts: Date.now() };
+      lastMyLocation = { lat: sm.lat, lng: sm.lng, ts: Date.now() };
+
+      const shouldFetchAddress = myLocationAddressText === "Saját hely";
+      await ensureMyLocationMarker(sm.lat, sm.lng, shouldFetchAddress);
+
+      // Folyamatos követés, de remegés ellen:
+      // - a markert mindig frissítjük (ha átment a pontosság szűrésen)
+      // - a térképet csak akkor középre tesszük, ha az elmozdulás "érdemi"
+      //   (dinamikus küszöb az accuracy alapján + minimális időköz).
+      const nowTs = Date.now();
+      const minCenterIntervalMs = 700;
+      const dynThreshold = Math.min(20, Math.max(6, acc * 0.8)); // m
+      const canCenterByTime = (nowTs - lastMyLocCenterTs) >= minCenterIntervalMs;
+      let shouldCenter = false;
+
+      if (!lastCenteredMyLocation) {
+        shouldCenter = true;
+      } else {
+        const dc = distanceMeters(sm.lat, sm.lng, lastCenteredMyLocation.lat, lastCenteredMyLocation.lng);
+        if (dc >= dynThreshold) shouldCenter = true;
+      }
+
+      if (shouldCenter && canCenterByTime) {
+        lastMyLocCenterTs = nowTs;
+        lastCenteredMyLocation = { lat: sm.lat, lng: sm.lng };
+        map.setView([sm.lat, sm.lng], map.getZoom(), { animate: false });
+      }
     },
     (err) => {
       console.warn("watchPosition error", err);
@@ -520,6 +537,45 @@ function startMyLocationWatch() {
       timeout: 10000,
     }
   );
+}
+
+// Startup check: detect whether geolocation permission is enabled and notify the user if not.
+// Note: browsers do not allow us to "enable" permission programmatically. We can only inform.
+async function checkGeolocationPermissionOnStartup() {
+  try {
+    if (!navigator.geolocation) return;
+
+    // Prefer Permissions API when available (does NOT trigger a prompt).
+    if (navigator.permissions && navigator.permissions.query) {
+      let p;
+      try {
+        p = await navigator.permissions.query({ name: "geolocation" });
+      } catch (_) {
+        // Some browsers throw for unsupported permission names.
+        p = null;
+      }
+
+      if (p && p.state === "denied") {
+        alert(
+          "A helymeghatározás tiltva van ehhez az oldalhoz.\n\n" +
+            "Engedélyezd a böngészőben a lakatszimbólumnál (Webhely beállításai → Hely), majd frissítsd az oldalt."
+        );
+      } else if (p && p.state === "prompt") {
+        alert(
+          "A helymeghatározás még nincs engedélyezve.\n\n" +
+            "Ha a böngésző rákérdez, válaszd az Engedélyezés opciót, vagy állítsd be a lakatszimbólumnál (Webhely beállításai → Hely)."
+        );
+      }
+
+      return;
+    }
+
+    // No reliable, prompt-free way to check without Permissions API.
+    // We intentionally do nothing here to avoid an unsolicited permission prompt on page load.
+  } catch (e) {
+    // Never fail app startup due to permission checks.
+    console.warn("Geolocation permission check failed", e);
+  }
 }
 
 async function centerToMyLocation() {
@@ -894,15 +950,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   registerSW();
   checkForUpdateOnline();
 
+  // Induláskor ellenőrizzük, hogy engedélyezve van-e a helymeghatározás.
+  // (Ez nem kér engedélyt automatikusan, csak tájékoztat.)
+  await checkGeolocationPermissionOnStartup();
+
   map = L.map("map");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
-
-  // Induláskor ellenőrizzük a helyadat engedélyt, és ha kell, kérjük.
-  // (Ha tiltva van, tájékoztatunk; ha kérdéses, a böngésző felugró engedély-kérést ad.)
-  initMyLocationOnStartup();
 
   await DB.init();
 
@@ -976,7 +1032,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 
-  document.getElementById("btnFilter").addEventListener("click", openFilterModal);
+  document.getElementById("btnFilter").addEventListener("click", () => {
+    // Ha épp térképi megjelenítés-szűrés aktív (csak kijelöltek / táblázat tartalma),
+    // akkor a Szűrés gomb úgy viselkedjen, mintha "Összes megjelenítése" történt volna.
+    if (isMapFiltered()) showAllMarkersAndFit();
+    openFilterModal();
+  });
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
 
   const btnSettings = document.getElementById("btnSettings");
@@ -1000,7 +1061,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnShowAll = document.getElementById("btnShowAll");
   if (btnShowAll) {
     btnShowAll.addEventListener("click", () => {
-      clearMapMarkerVisibilityFilter();
+      showAllMarkersAndFit();
       showHint("Összes marker megjelenítve.");
     });
   }
@@ -1149,6 +1210,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
   }
+  const showDeletedBtn = document.getElementById("filterShowDeletedBtn");
   if (showDeletedBtn) {
     showDeletedBtn.addEventListener("click", async () => {
       filterShowDeleted = !filterShowDeleted;
@@ -1505,15 +1567,48 @@ const tb = document.getElementById("sfList");
 }
 
 function applyFilter() {
-  const a = document.getElementById("sfAddress").value.toLowerCase();
-  const t = document.getElementById("sfType").value;
-  const s = document.getElementById("sfStatus").value;
+  const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
 
-  const res = _allMarkersCache.filter(m =>
-    (!a || m.address.toLowerCase().includes(a)) &&
-    (!t || m.type === t) &&
-    (!s || m.status === s)
-  );
+  const typeSel = document.getElementById("sfType");
+  const statusSel = document.getElementById("sfStatus");
+
+  const tCode = (typeSel?.value || "").trim();
+  const sCode = (statusSel?.value || "").trim();
+
+  let tLabel = (typeSel && typeSel.selectedIndex >= 0)
+    ? (typeSel.options[typeSel.selectedIndex]?.textContent || "").trim()
+    : "";
+  let sLabel = (statusSel && statusSel.selectedIndex >= 0)
+    ? (statusSel.options[statusSel.selectedIndex]?.textContent || "").trim()
+    : "";
+
+  // "Összes" opció esetén ne szűrjünk label alapján sem
+  if (!tCode || tCode === "") tLabel = "";
+  if (!sCode || sCode === "") sLabel = "";
+  if (tLabel === "Összes") tLabel = "";
+  if (sLabel === "Összes") sLabel = "";
+
+  const res = (_allMarkersCache || []).filter((m) => {
+    const addr = String(m?.address || "").toLowerCase();
+
+    const typeOk =
+      (!tCode && !tLabel) ||
+      m?.type === tCode ||
+      m?.typeLabel === tCode ||
+      m?.type === tLabel ||
+      m?.typeLabel === tLabel;
+
+    const statusOk =
+      (!sCode && !sLabel) ||
+      m?.status === sCode ||
+      m?.statusLabel === sCode ||
+      m?.status === sLabel ||
+      m?.statusLabel === sLabel;
+
+    const addrOk = !a || addr.includes(a);
+
+    return addrOk && typeOk && statusOk;
+  });
 
   renderFilterList(res);
 }
@@ -2156,6 +2251,5 @@ async function refreshFilterData() {
   await fillFilterCombos();
   applyFilter();
 }
-
 
 

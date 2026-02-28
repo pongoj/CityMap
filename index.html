@@ -409,10 +409,24 @@
     #filterModal .th-filter.active .th-filter-btn .ico{ color:#0284c7; }
     #filterModal .th-filter.active span{ font-weight:800; }
 
-    /* v5.34.6: Töröltek megjelenítése ikon (kuka + szem) – jól látható, dupla szélesség */
-    #filterShowDeletedBtn{ min-width: 92px; }
-    #filterShowDeletedBtn .ico{ display:flex; gap:8px; align-items:center; justify-content:center; }
-    #filterShowDeletedBtn .ico svg{ width:22px; height:22px; }
+    /* v5.34.7: Töröltek megjelenítése ikon (kuka + szem) – dupla szélesség, jó láthatóság */
+    #filterShowDeletedBtn{
+      min-width: 72px; /* kb. dupla ikon-gomb szélesség */
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    /* a .btn-icon .ico globálisan 18x18-ra fixál, itt ezt felülírjuk, hogy ne vágja le az SVG-t */
+    #filterShowDeletedBtn .ico{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:center;
+      width:auto;
+      height:auto;
+      line-height:0;
+    }
+    #filterShowDeletedBtn .ico svg{ width:18px; height:18px; }
+    #filterShowDeletedBtn .ico-off{ display:flex; }
     #filterShowDeletedBtn .ico-on{ display:none; }
     #filterShowDeletedBtn.active .ico-off{ display:none; }
     #filterShowDeletedBtn.active .ico-on{ display:flex; }

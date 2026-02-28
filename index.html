@@ -693,6 +693,20 @@
       <path d="M10 11v7M14 11v7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       <path d="M17 9l4 4m0-4l-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </symbol>
+    <symbol id="i-trash-eye-on" viewBox="0 0 24 24">
+      <use href="#i-trash-o"/>
+      <g transform="translate(8,11) scale(0.55)">
+        <use href="#i-showall"/>
+      </g>
+    </symbol>
+    <symbol id="i-trash-eye-off" viewBox="0 0 24 24">
+      <use href="#i-trash-o"/>
+      <g transform="translate(8,11) scale(0.55)">
+        <use href="#i-showall"/>
+      </g>
+      <path d="M9 19 L19 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
 
     <!-- X bezárás ikon -->
     <symbol id="i-x" viewBox="0 0 24 24">
@@ -775,8 +789,8 @@
             <svg class="ico" aria-hidden="true"><use href="#i-showall"></use></svg>
           </button>
           <button class="btn btn-ghost btn-icon" id="filterShowDeletedBtn" type="button" title="Töröltek megjelenítése" aria-label="Töröltek megjelenítése">
-            <svg class="ico ico-off" aria-hidden="true"><use href="#i-trash-o"></use></svg>
-            <svg class="ico ico-on" aria-hidden="true"><use href="#i-trash-o-x"></use></svg>
+            <svg class="ico ico-off" aria-hidden="true"><use href="#i-trash-eye-off"></use></svg>
+            <svg class="ico ico-on" aria-hidden="true"><use href="#i-trash-eye-on"></use></svg>
           </button>
 <button class="btn btn-ghost btn-icon" id="sfClearAllFiltersBtn" type="button" title="Szűrések törlése" aria-label="Szűrések törlése">
             <svg class="ico" aria-hidden="true"><use href="#i-filter-x"></use></svg>

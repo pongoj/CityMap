@@ -409,6 +409,11 @@
     #filterModal .th-filter.active .th-filter-btn .ico{ color:#0284c7; }
     #filterModal .th-filter.active span{ font-weight:800; }
 
+    /* v5.34.3: Töröltek megjelenítése ikon kétállapotú */
+    #filterShowDeletedBtn .ico-on{ display:none; }
+    #filterShowDeletedBtn.active .ico-off{ display:none; }
+    #filterShowDeletedBtn.active .ico-on{ display:block; }
+
     .btn-save{ background:#111827; color:#fff; }
 
     /* Photo gallery */
@@ -675,6 +680,24 @@
     <symbol id="i-trash" viewBox="0 0 24 24">
       <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM7 9h2v10H7V9z" fill="currentColor"/>
     </symbol>
+
+    <!-- v5.34.3: "Töröltek megjelenítése" ikon (ne legyen szűrő) -->
+    <symbol id="i-trash-o" viewBox="0 0 24 24">
+      <path d="M9 3h6l1 2h4v2H4V5h4l1-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M6 7l1 14h10l1-14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M10 11v7M14 11v7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-trash-o-x" viewBox="0 0 24 24">
+      <path d="M9 3h6l1 2h4v2H4V5h4l1-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M6 7l1 14h10l1-14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M10 11v7M14 11v7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M17 9l4 4m0-4l-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- X bezárás ikon -->
+    <symbol id="i-x" viewBox="0 0 24 24">
+      <path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
     <symbol id="i-deselect" viewBox="0 0 24 24">
       <path d="M5 5h10v2H7v8H5V5zm4 4h10v10H9V9zm2 2v6h6v-6h-6z" fill="currentColor"/>
       <path d="M18.3 5.7l-12.6 12.6-1.4-1.4 12.6-12.6 1.4 1.4z" fill="currentColor"/>
@@ -752,7 +775,8 @@
             <svg class="ico" aria-hidden="true"><use href="#i-showall"></use></svg>
           </button>
           <button class="btn btn-ghost btn-icon" id="filterShowDeletedBtn" type="button" title="Töröltek megjelenítése" aria-label="Töröltek megjelenítése">
-            <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
+            <svg class="ico ico-off" aria-hidden="true"><use href="#i-trash-o"></use></svg>
+            <svg class="ico ico-on" aria-hidden="true"><use href="#i-trash-o-x"></use></svg>
           </button>
 <button class="btn btn-ghost btn-icon" id="sfClearAllFiltersBtn" type="button" title="Szűrések törlése" aria-label="Szűrések törlése">
             <svg class="ico" aria-hidden="true"><use href="#i-filter-x"></use></svg>
@@ -760,7 +784,7 @@
                     <button class="btn btn-ghost btn-icon" id="filterDeleteSelectedBtn" type="button" title="Kijelöltek törlése" aria-label="Kijelöltek törlése">
             <svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg>
           </button>
-          <button class="btn btn-ghost" id="btnFilterClose" type="button">Bezár</button>
+          <button class="btn btn-ghost btn-icon" id="btnFilterClose" type="button" title="Bezár" aria-label="Bezár"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>
         </div>
       </div>
 

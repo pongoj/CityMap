@@ -409,9 +409,10 @@
     #filterModal .th-filter.active .th-filter-btn .ico{ color:#0284c7; }
     #filterModal .th-filter.active span{ font-weight:800; }
 
-    /* v5.34.5: Töröltek megjelenítése ikon (kuka + szem) kétállapotú */
-    #filterShowDeletedBtn .ico{ display:flex; gap:4px; align-items:center; justify-content:center; }
-    #filterShowDeletedBtn .ico svg{ width:18px; height:18px; }
+    /* v5.34.6: Töröltek megjelenítése ikon (kuka + szem) – jól látható, dupla szélesség */
+    #filterShowDeletedBtn{ min-width: 92px; }
+    #filterShowDeletedBtn .ico{ display:flex; gap:8px; align-items:center; justify-content:center; }
+    #filterShowDeletedBtn .ico svg{ width:22px; height:22px; }
     #filterShowDeletedBtn .ico-on{ display:none; }
     #filterShowDeletedBtn.active .ico-off{ display:none; }
     #filterShowDeletedBtn.active .ico-on{ display:flex; }
@@ -800,11 +801,11 @@
           </button>
           <button class="btn btn-ghost btn-icon" id="filterShowDeletedBtn" type="button" title="Töröltek megjelenítése" aria-label="Töröltek megjelenítése">
             <span class="ico ico-off" aria-hidden="true">
-              <svg aria-hidden="true"><use href="#i-trash"></use></svg>
+              <svg aria-hidden="true"><use href="#i-trash-o-x"></use></svg>
               <svg aria-hidden="true"><use href="#i-eye-off"></use></svg>
             </span>
             <span class="ico ico-on" aria-hidden="true">
-              <svg aria-hidden="true"><use href="#i-trash"></use></svg>
+              <svg aria-hidden="true"><use href="#i-trash-o"></use></svg>
               <svg aria-hidden="true"><use href="#i-eye"></use></svg>
             </span>
           </button>

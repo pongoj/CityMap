@@ -411,7 +411,7 @@
 
     /* v5.34.7: Töröltek megjelenítése ikon (kuka + szem) – dupla szélesség, jó láthatóság */
     #filterShowDeletedBtn{
-      min-width: 72px; /* kb. dupla ikon-gomb szélesség */
+      min-width: 56px; /* kompakt, még elfér 2 ikon */
       padding-left: 12px;
       padding-right: 12px;
     }
@@ -842,6 +842,7 @@
               <svg aria-hidden="true"><use href="#i-trash-o"></use></svg>
               <svg aria-hidden="true"><use href="#i-eye"></use></svg>
             </span>
+          </button>
           
           <button class="btn btn-ghost btn-icon" id="filterExcelBtn" type="button" title="Excel (később)" aria-label="Excel (később)" disabled>
             <svg class="ico" aria-hidden="true"><use href="#i-excel"></use></svg>

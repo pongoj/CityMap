@@ -896,7 +896,17 @@
                       </div>
                     </div>
                   </th>
-                  <th>Megjegyzés</th>
+                  <th>
+                    <div class="th-filter" id="sfNotesTh">
+                      <span>Megjegyzés</span>
+                      <button class="th-filter-btn" id="sfNotesFilterBtn" type="button" title="Szűrés" aria-label="Szűrés">
+                        <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
+                      </button>
+                      <div class="th-filter-pop" id="sfNotesPop" role="dialog" aria-label="Megjegyzés szűrés">
+                        <input id="sfNotes" placeholder="Megjegyzés részlet" />
+                      </div>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody id="sfList"></tbody>

@@ -1,4 +1,4 @@
-const APP_VERSION = "5.34.7";
+const APP_VERSION = "5.35";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1248,9 +1248,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("sfAddress").addEventListener("input", applyFilter);
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);
+  const sfNotesEl = document.getElementById("sfNotes");
+  if (sfNotesEl) sfNotesEl.addEventListener("input", applyFilter);
 
   // v5.31: Szűrők az oszlopfejlécben (felugró input/select)
-  const popIds = ["sfAddressPop", "sfTypePop", "sfStatusPop"];
+  const popIds = ["sfAddressPop", "sfTypePop", "sfStatusPop", "sfNotesPop"];
   function closeHeaderFilterPops() {
     popIds.forEach((id) => {
       const el = document.getElementById(id);
@@ -1276,6 +1278,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (bType) bType.addEventListener("click", (e) => { e.stopPropagation(); togglePop("sfTypePop", "sfType"); });
   const bStatus = document.getElementById("sfStatusFilterBtn");
   if (bStatus) bStatus.addEventListener("click", (e) => { e.stopPropagation(); togglePop("sfStatusPop", "sfStatus"); });
+  const bNotes = document.getElementById("sfNotesFilterBtn");
+  if (bNotes) bNotes.addEventListener("click", (e) => { e.stopPropagation(); togglePop("sfNotesPop", "sfNotes"); });
 
   popIds.forEach((id) => {
     const el = document.getElementById(id);
@@ -1298,9 +1302,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     const a = document.getElementById("sfAddress");
     const t = document.getElementById("sfType");
     const s = document.getElementById("sfStatus");
+    const n = document.getElementById("sfNotes");
     if (a) a.value = "";
     if (t) t.value = "";
     if (s) s.value = "";
+    if (n) n.value = "";
     closeHeaderFilterPops();
     applyFilter();
   });
@@ -1394,6 +1400,7 @@ async function fillFilterCombos() {
 
   const t = document.getElementById("sfType");
   const s = document.getElementById("sfStatus");
+    const n = document.getElementById("sfNotes");
 
   t.innerHTML = '<option value="">Összes</option>';
   types.forEach(x => {
@@ -1695,18 +1702,22 @@ function updateHeaderFilterIndicators() {
   const aVal = (document.getElementById("sfAddress")?.value || "").trim();
   const tVal = (document.getElementById("sfType")?.value || "").trim();
   const sVal = (document.getElementById("sfStatus")?.value || "").trim();
+  const nVal = (document.getElementById("sfNotes")?.value || "").trim();
 
   const addrTh = document.getElementById("sfAddressTh");
   const typeTh = document.getElementById("sfTypeTh");
   const statusTh = document.getElementById("sfStatusTh");
+  const notesTh = document.getElementById("sfNotesTh");
 
   if (addrTh) addrTh.classList.toggle("active", aVal.length > 0);
   if (typeTh) typeTh.classList.toggle("active", tVal.length > 0);
   if (statusTh) statusTh.classList.toggle("active", sVal.length > 0);
+  if (notesTh) notesTh.classList.toggle("active", nVal.length > 0);
 }
 
 function applyFilter() {
   const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
+  const n = (document.getElementById("sfNotes")?.value || "").trim().toLowerCase();
 
   const typeSel = document.getElementById("sfType");
   const statusSel = document.getElementById("sfStatus");
@@ -1745,8 +1756,10 @@ function applyFilter() {
       m?.statusLabel === sLabel;
 
     const addrOk = !a || addr.includes(a);
+    const notes = String(m?.notes || "").toLowerCase();
+    const notesOk = !n || notes.includes(n);
 
-    return addrOk && typeOk && statusOk;
+    return addrOk && typeOk && statusOk && notesOk;
   });
 
   updateHeaderFilterIndicators();

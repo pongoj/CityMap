@@ -1,4 +1,4 @@
-const APP_VERSION = "5.39.1";
+const APP_VERSION = "5.39.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1894,10 +1894,14 @@ async function exportFilterTableToExcel() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   } catch (err) {
+    // User cancelled the save dialog -> do nothing
+    if (err && (err.name === "AbortError" || String(err.message || "").toLowerCase().includes("abort"))) {
+      return;
+    }
     console.error("Excel export failed", err);
     alert("Nem sikerült exportálni a táblázatot.");
   }
-
+}
 
 function applyFilter() {
   const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
@@ -1947,9 +1951,6 @@ function applyFilter() {
   });
 
   updateHeaderFilterIndicators();
-
-
-}
   renderFilterList(res);
 }
 

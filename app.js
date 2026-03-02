@@ -1,4 +1,4 @@
-const APP_VERSION = "5.37.1";
+const APP_VERSION = "5.38";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1660,6 +1660,15 @@ function clearAllFilterSelections() {
   updateFilterShowButtonState();
 }
 
+
+function formatGps(m) {
+  if (!m) return "";
+  const lat = Number(m.lat);
+  const lng = Number(m.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+  return lat.toFixed(6) + ", " + lng.toFixed(6);
+}
+
 function renderFilterList(list) {
 const tb = document.getElementById("sfList");
   tb.innerHTML = "";
@@ -1681,17 +1690,18 @@ const tb = document.getElementById("sfList");
           <svg class="ico" aria-hidden="true"><use href="#i-camera"></use></svg>
         </button>
       </td>
+      <td>${escapeHtml(m.address)}</td>
+      <td>${escapeHtml(m.typeLabel)}</td>
+      <td>${escapeHtml(m.statusLabel)}</td>
+      <td>${escapeHtml(m.notes || "")}</td>
+      <td class="sf-gps-cell">${escapeHtml(formatGps(m))}</td>
       <td class="sf-id-cell">
         <span class="sf-id-text">${idText(m.id)}</span>
         <button class="sf-edit-overlay-btn" type="button" title="Objektum módosítása" aria-label="Objektum módosítása">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-edit"></use></svg>
         </button>
       </td>
-      <td>${escapeHtml(m.address)}</td>
-      <td>${escapeHtml(m.typeLabel)}</td>
-      <td>${escapeHtml(m.statusLabel)}</td>
-      <td>${escapeHtml(m.notes || "")}</td>
-    `;
+`;
 
 	    // Checkbox: többszörös kijelölés (nem törli a többit)
 	    const cb = tr.querySelector('input.row-select');

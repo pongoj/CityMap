@@ -1,4 +1,4 @@
-const APP_VERSION = "5.36.2";
+const APP_VERSION = "5.37";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1077,6 +1077,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     openFilterModal();
   });
   document.getElementById("btnFilterClose").addEventListener("click", closeFilterModal);
+  initFilterDragClose();
 
   const btnSettings = document.getElementById("btnSettings");
   if (btnSettings) btnSettings.addEventListener("click", openSettingsModal);
@@ -1372,7 +1373,13 @@ let _allMarkersCache = [];
 
 function openFilterModal() {
   photoCountCache.clear();
-  document.getElementById("filterModal").style.display = "flex";
+  const fm = document.getElementById("filterModal");
+  if (fm) {
+    const mc = fm.querySelector(".modal-content");
+    if (mc) { mc.style.transition = ""; mc.style.transform = ""; mc.style.willChange = ""; }
+    fm.style.display = "flex";
+  }
+  initFilterDragClose();
   document.getElementById("sfAddress").value = "";
 
   // újranyitáskor alapból töröljük a kijelöléseket (később átállítható, ha kell)
@@ -1388,11 +1395,93 @@ function openFilterModal() {
 }
 
 function closeFilterModal() {
-  document.getElementById("filterModal").style.display = "none";
+  const fm = document.getElementById("filterModal");
+  if (fm) {
+    const mc = fm.querySelector(".modal-content");
+    if (mc) { mc.style.transition = ""; mc.style.transform = ""; mc.style.willChange = ""; }
+    fm.style.display = "none";
+  }
   selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
   if (showBtn) showBtn.disabled = true;
 }
+
+// Mobilon: a szűrés ablak tetején lévő "fogantyú" lehúzásával bezárás
+let _filterDragCloseInited = false;
+function initFilterDragClose() {
+  if (_filterDragCloseInited) return;
+  const handle = document.getElementById("filterDragHandle");
+  const modal = document.getElementById("filterModal");
+  const modalContent = modal ? modal.querySelector(".modal-content") : null;
+  if (!handle || !modal || !modalContent) return;
+
+  _filterDragCloseInited = true;
+
+  let startY = 0;
+  let currentDY = 0;
+  let dragging = false;
+
+  const THRESHOLD_PX = 110;
+  const MAX_TRANSLATE_PX = 260;
+
+  const isMobile = () => window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+
+  const resetTransform = () => {
+    modalContent.style.transition = "";
+    modalContent.style.transform = "";
+  };
+
+  handle.addEventListener("pointerdown", (e) => {
+    if (!isMobile()) return;
+    if (modal.style.display !== "flex") return;
+
+    dragging = true;
+    startY = e.clientY;
+    currentDY = 0;
+
+    modalContent.style.transition = "none";
+    modalContent.style.willChange = "transform";
+
+    try { handle.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dy = Math.max(0, e.clientY - startY);
+    currentDY = dy;
+    modalContent.style.transform = `translateY(${Math.min(dy, MAX_TRANSLATE_PX)}px)`;
+    e.preventDefault();
+  });
+
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+
+    modalContent.style.transition = "transform 160ms ease";
+    modalContent.style.willChange = "";
+
+    if (currentDY >= THRESHOLD_PX) {
+      modalContent.style.transform = `translateY(${MAX_TRANSLATE_PX}px)`;
+      setTimeout(() => {
+        resetTransform();
+        closeFilterModal();
+      }, 170);
+    } else {
+      modalContent.style.transform = "translateY(0px)";
+      setTimeout(() => resetTransform(), 180);
+    }
+  };
+
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+
+  // Biztonság: ha bezárjuk más módon (ESC, overlay click), ne maradjon transform
+  window.addEventListener("resize", () => {
+    if (!isMobile()) resetTransform();
+  });
+}
+
 
 async function fillFilterCombos() {
   const types = await DB.getLookup("markerTypes") || [];

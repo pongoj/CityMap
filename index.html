@@ -60,7 +60,22 @@
         background: #f9fafb;
       }
 
-      /* Mobil helytakarékosság: kisebb fejléc */
+      
+      /* Mobil: szűrés ablak lehúzható bezárás (drag handle) */
+      .modal-drag-handle{
+        width: 54px;
+        height: 6px;
+        border-radius: 999px;
+        background: #cbd5e1;
+        margin: 10px auto 0;
+        display: none;
+      }
+      @media (max-width: 640px){
+        .modal-drag-handle{ display:block; }
+        /* Mobilon ne legyen X gomb, helyette lehúzás */
+        #btnFilterClose{ display:none !important; }
+      }
+/* Mobil helytakarékosság: kisebb fejléc */
       #filterModal .filter-table thead th{
         padding: 4px 8px;
         font-size: 13px;
@@ -832,6 +847,8 @@
   
   <div id="filterModal" class="modal">
     <div class="modal-content filter-modal">
+      <div class="modal-drag-handle" id="filterDragHandle" aria-hidden="true"></div>
+
       <div class="settings-header">
         <div style="font-weight:800; font-size:20px;">Szűrés</div>
         <div style="display:flex; gap:8px; align-items:center;">

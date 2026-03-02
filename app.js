@@ -1,4 +1,4 @@
-const APP_VERSION = "5.37";
+const APP_VERSION = "5.37.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1379,6 +1379,8 @@ function openFilterModal() {
     if (mc) { mc.style.transition = ""; mc.style.transform = ""; mc.style.willChange = ""; }
     fm.style.display = "flex";
   }
+  document.documentElement.classList.add("filter-modal-open");
+  document.body.classList.add("filter-modal-open");
   initFilterDragClose();
   document.getElementById("sfAddress").value = "";
 
@@ -1401,6 +1403,8 @@ function closeFilterModal() {
     if (mc) { mc.style.transition = ""; mc.style.transform = ""; mc.style.willChange = ""; }
     fm.style.display = "none";
   }
+  document.documentElement.classList.remove("filter-modal-open");
+  document.body.classList.remove("filter-modal-open");
   selectedFilterMarkerIds = new Set();
   const showBtn = document.getElementById("filterShowBtn");
   if (showBtn) showBtn.disabled = true;

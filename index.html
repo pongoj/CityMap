@@ -69,6 +69,16 @@
         background: #cbd5e1;
         margin: 10px auto 0;
         display: none;
+              touch-action: none;
+        user-select: none;
+}
+
+      html.filter-modal-open, body.filter-modal-open{
+        overscroll-behavior-y: none;
+      }
+
+      #filterModal{
+        overscroll-behavior: contain;
       }
       @media (max-width: 640px){
         .modal-drag-handle{ display:block; }

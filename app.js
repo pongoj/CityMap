@@ -1,4 +1,4 @@
-const APP_VERSION = "5.38.1";
+const APP_VERSION = "5.39";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1246,6 +1246,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  const excelBtn = document.getElementById("filterExcelBtn");
+  if (excelBtn) {
+    excelBtn.disabled = false;
+    excelBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      exportFilterTableToExcel();
+    });
+  }
+
   document.getElementById("sfAddress").addEventListener("input", applyFilter);
   document.getElementById("sfType").addEventListener("change", applyFilter);
   document.getElementById("sfStatus").addEventListener("change", applyFilter);
@@ -1370,6 +1379,7 @@ function userIconForZoom(zoom) {
 
 /* ===== Filter modal (v5.3) ===== */
 let _allMarkersCache = [];
+let _lastFilterList = [];
 
 function openFilterModal() {
   photoCountCache.clear();
@@ -1672,6 +1682,7 @@ function formatGps(m) {
 function renderFilterList(list) {
 const tb = document.getElementById("sfList");
   tb.innerHTML = "";
+  _lastFilterList = Array.isArray(list) ? list.slice() : [];
   list.forEach(m => {
     const tr = document.createElement("tr");
     tr.dataset.markerId = String(m.id);
@@ -1867,6 +1878,76 @@ function applyFilter() {
 
   updateHeaderFilterIndicators();
 
+
+// ---------------------------
+// Excel export (Filter table)
+// ---------------------------
+function csvEscape(val, delim) {
+  const s = (val === null || val === undefined) ? "" : String(val);
+  const needs = s.includes('"') || s.includes('\n') || s.includes('\r') || s.includes(delim);
+  if (!needs) return s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function buildFilterCsv(rows) {
+  const delim = ';'; // HU locale friendly (Excel)
+  const header = ["Cím", "Típus", "Állapot", "Megjegyzés", "GPS", "ID", "Törölt"];
+  const lines = [];
+  lines.push(header.map(h => csvEscape(h, delim)).join(delim));
+
+  (rows || []).forEach((m) => {
+    const deleted = (m && (m.deletedAt || m.deleted)) ? "IGEN" : "";
+    const gps = formatGps(m);
+    const line = [
+      m?.address || "",
+      m?.typeLabel || "",
+      m?.statusLabel || "",
+      m?.notes || "",
+      gps || "",
+      idText(m?.id),
+      deleted
+    ];
+    lines.push(line.map(v => csvEscape(v, delim)).join(delim));
+  });
+
+  // UTF-8 BOM, so Excel reads accents correctly
+  return '\ufeff' + lines.join('\r\n');
+}
+
+async function exportFilterTableToExcel() {
+  try {
+    const rows = Array.isArray(_lastFilterList) ? _lastFilterList : [];
+    const csv = buildFilterCsv(rows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+
+    const fn = `CityMap_export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+
+    // Prefer Save As dialog if available (Chromium)
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fn,
+        types: [{ description: "CSV (Excel)", accept: { "text/csv": [".csv"] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    }
+
+    // Fallback: normal download (browser will ask location depending on settings)
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fn;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (err) {
+    console.error("Excel export failed", err);
+    alert("Nem sikerült exportálni a táblázatot.");
+  }
+}
   renderFilterList(res);
 }
 

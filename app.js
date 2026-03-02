@@ -1,4 +1,4 @@
-const APP_VERSION = "5.36.1";
+const APP_VERSION = "5.36.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();

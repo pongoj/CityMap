@@ -430,6 +430,12 @@
     #filterShowDeletedBtn .ico-on{ display:none; }
     #filterShowDeletedBtn.active .ico-off{ display:none; }
     #filterShowDeletedBtn.active .ico-on{ display:flex; }
+    /* v5.36.2: biztosítsuk, hogy a Töröltek megjelenítése gombon egyszerre csak 1 ikonkészlet látszódjon */
+    #filterShowDeletedBtn .ico-on{ display:none !important; }
+    #filterShowDeletedBtn .ico-off{ display:flex !important; }
+    #filterShowDeletedBtn.active .ico-on{ display:flex !important; }
+    #filterShowDeletedBtn.active .ico-off{ display:none !important; }
+
 
     .btn-save{ background:#111827; color:#fff; }
 

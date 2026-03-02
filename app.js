@@ -1,4 +1,4 @@
-const APP_VERSION = "5.39";
+const APP_VERSION = "5.39.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1829,56 +1829,6 @@ function updateHeaderFilterIndicators() {
   if (notesTh) notesTh.classList.toggle("active", nVal.length > 0);
 }
 
-function applyFilter() {
-  const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
-  const n = (document.getElementById("sfNotes")?.value || "").trim().toLowerCase();
-
-  const typeSel = document.getElementById("sfType");
-  const statusSel = document.getElementById("sfStatus");
-
-  const tCode = (typeSel?.value || "").trim();
-  const sCode = (statusSel?.value || "").trim();
-
-  let tLabel = (typeSel && typeSel.selectedIndex >= 0)
-    ? (typeSel.options[typeSel.selectedIndex]?.textContent || "").trim()
-    : "";
-  let sLabel = (statusSel && statusSel.selectedIndex >= 0)
-    ? (statusSel.options[statusSel.selectedIndex]?.textContent || "").trim()
-    : "";
-
-  // "Összes" opció esetén ne szűrjünk label alapján sem
-  if (!tCode || tCode === "") tLabel = "";
-  if (!sCode || sCode === "") sLabel = "";
-  if (tLabel === "Összes") tLabel = "";
-  if (sLabel === "Összes") sLabel = "";
-
-  const res = (_allMarkersCache || []).filter((m) => {
-    const addr = String(m?.address || "").toLowerCase();
-
-    const typeOk =
-      (!tCode && !tLabel) ||
-      m?.type === tCode ||
-      m?.typeLabel === tCode ||
-      m?.type === tLabel ||
-      m?.typeLabel === tLabel;
-
-    const statusOk =
-      (!sCode && !sLabel) ||
-      m?.status === sCode ||
-      m?.statusLabel === sCode ||
-      m?.status === sLabel ||
-      m?.statusLabel === sLabel;
-
-    const addrOk = !a || addr.includes(a);
-    const notes = String(m?.notes || "").toLowerCase();
-    const notesOk = !n || notes.includes(n);
-
-    return addrOk && typeOk && statusOk && notesOk;
-  });
-
-  updateHeaderFilterIndicators();
-
-
 // ---------------------------
 // Excel export (Filter table)
 // ---------------------------
@@ -1947,6 +1897,58 @@ async function exportFilterTableToExcel() {
     console.error("Excel export failed", err);
     alert("Nem sikerült exportálni a táblázatot.");
   }
+
+
+function applyFilter() {
+  const a = (document.getElementById("sfAddress")?.value || "").trim().toLowerCase();
+  const n = (document.getElementById("sfNotes")?.value || "").trim().toLowerCase();
+
+  const typeSel = document.getElementById("sfType");
+  const statusSel = document.getElementById("sfStatus");
+
+  const tCode = (typeSel?.value || "").trim();
+  const sCode = (statusSel?.value || "").trim();
+
+  let tLabel = (typeSel && typeSel.selectedIndex >= 0)
+    ? (typeSel.options[typeSel.selectedIndex]?.textContent || "").trim()
+    : "";
+  let sLabel = (statusSel && statusSel.selectedIndex >= 0)
+    ? (statusSel.options[statusSel.selectedIndex]?.textContent || "").trim()
+    : "";
+
+  // "Összes" opció esetén ne szűrjünk label alapján sem
+  if (!tCode || tCode === "") tLabel = "";
+  if (!sCode || sCode === "") sLabel = "";
+  if (tLabel === "Összes") tLabel = "";
+  if (sLabel === "Összes") sLabel = "";
+
+  const res = (_allMarkersCache || []).filter((m) => {
+    const addr = String(m?.address || "").toLowerCase();
+
+    const typeOk =
+      (!tCode && !tLabel) ||
+      m?.type === tCode ||
+      m?.typeLabel === tCode ||
+      m?.type === tLabel ||
+      m?.typeLabel === tLabel;
+
+    const statusOk =
+      (!sCode && !sLabel) ||
+      m?.status === sCode ||
+      m?.statusLabel === sCode ||
+      m?.status === sLabel ||
+      m?.statusLabel === sLabel;
+
+    const addrOk = !a || addr.includes(a);
+    const notes = String(m?.notes || "").toLowerCase();
+    const notesOk = !n || notes.includes(n);
+
+    return addrOk && typeOk && statusOk && notesOk;
+  });
+
+  updateHeaderFilterIndicators();
+
+
 }
   renderFilterList(res);
 }

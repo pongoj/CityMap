@@ -1,4 +1,4 @@
-const APP_VERSION = "5.45.1";
+const APP_VERSION = "5.45.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1701,26 +1701,23 @@ if (navBtn) {
     localStorage.setItem("citymap_nav_mode", navMode);
     syncNavBtn();
 
-    // v5.42.2: azonnali hatás → követés bekapcsol + (heading módban) forgatás
+    // Mindkét mód váltáskor: követés bekapcsol és saját hely középre
     myLocFollowEnabled = true;
 
     // Iránytű indítása (Androidon általában prompt nélkül működik)
     try { await requestCompassPermissionIfNeeded(); } catch (_) {}
     startCompassIfPossible();
 
-    // Ha még nincs pozíció, kérjünk egy fixet, különben "nem csinál semmit" érzés
-    if (!lastMyLocation) {
-      try { await centerToMyLocation(); } catch (_) {}
-    }
+    // Mindig középre rakjuk a saját helyet gombnyomásra (mindkét módban)
+    try {
+      await centerToMyLocation();
+    } catch (_) {}
 
+    // Forgatás/irány alkalmazása a kiválasztott navigáció mód szerint
     scheduleApplyNavBearing();
 
-    if (lastMyLocation) {
-      map.panTo([lastMyLocation.lat, lastMyLocation.lng], { animate: true, duration: 0.35, easeLinearity: 0.25 });
-      if (navMode === "heading") {
-        try { map.panBy([0, navYOffsetPx()], { animate: true, duration: 0.35 }); } catch (_) {}
-      }
-    }
+    // frissítsük az alsó "Középre" gomb láthatóságát is
+    try { updateMyLocFabVisibility(); } catch (_) {}
   });
 }
 

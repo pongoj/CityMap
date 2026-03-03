@@ -29,6 +29,9 @@
     }
     .btn-add{ background:#2c7be5; color:#fff; }
     .btn-loc{ background:#16a34a; color:#fff; }
+    .btn-nav{ background:#0ea5e9; color:#fff; }
+    .btn-nav.nav-heading{ background:#f59e0b; color:#111827; }
+
     .btn-clear{ background:#ef4444; color:#fff; }
 .btn-filter{ background:#6b7280; color:#fff; }
 .table-scroll {
@@ -739,6 +742,11 @@
     <symbol id="i-loc" viewBox="0 0 24 24">
       <path d="M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7zm0 9.5A2.5 2.5 0 1 0 12 6a2.5 2.5 0 0 0 0 5.5z" fill="currentColor"/>
     </symbol>
+<symbol id="i-compass" viewBox="0 0 24 24">
+  <path d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 .001-16.001A8 8 0 0 1 12 20z"/>
+  <path d="M14.8 9.2l-2.1 5.6-5.6 2.1 2.1-5.6 5.6-2.1zm-4.2 6.1l1.6-1.6.9-2.5-2.5.9-1.6 1.6-.9 2.5 2.5-.9z"/>
+</symbol>
+
     <symbol id="i-trash" viewBox="0 0 24 24">
       <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM7 9h2v10H7V9z" fill="currentColor"/>
     </symbol>
@@ -805,6 +813,7 @@
     <button class="btn btn-filter btn-icon" id="btnShowAll" style="display:none;" title="Összes megjelenítése" aria-label="Összes megjelenítése"><svg class="ico" aria-hidden="true"><use href="#i-showall"></use></svg></button>
     <button class="btn btn-filter btn-icon" id="btnSettings" title="Beállítások" aria-label="Beállítások"><svg class="ico" aria-hidden="true"><use href="#i-settings"></use></svg></button>
     <button class="btn btn-loc btn-icon" id="btnMyLoc" title="Saját helyem" aria-label="Saját helyem"><svg class="ico" aria-hidden="true"><use href="#i-loc"></use></svg></button>
+    <button class="btn btn-nav btn-icon" id="btnNavMode" title="Navigáció: észak felül" aria-label="Navigáció: észak felül"><svg class="ico" aria-hidden="true"><use href="#i-compass"></use></svg></button>
     <button class="btn btn-clear btn-icon" id="btnClear" title="Összes törlése" aria-label="Összes törlése"><svg class="ico" aria-hidden="true"><use href="#i-trash"></use></svg></button>
   </div>
 

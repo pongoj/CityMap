@@ -1,4 +1,4 @@
-const APP_VERSION = "5.40";
+const APP_VERSION = "5.41";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -439,7 +439,17 @@ const GPS_MARKER_ANIM_MS = 650;     // marker animáció időtartam
 const GPS_CENTER_ANIM_S = 0.55;     // térkép pan animáció
 const GPS_MIN_CENTER_INTERVAL_MS = 650;
 
-let myLocFollowEnabled = true; // induláskor bekapcsolva (Saját helyem gomb visszakapcsolja)
+let myLocFollowEnabled = true;
+// v5.41: Navigáció mód (térkép követés viselkedése)
+// - "north": észak felül, középre követ
+// - "heading": haladási irány (nyíl + "előrenézős" követés)
+let navMode = (localStorage.getItem("citymap_nav_mode") || "north"); // "north" | "heading"
+
+// Saját hely nyíl iránya (0..360). Ha a böngésző ad heading-et, azt használjuk,
+// különben két GPS pontból számolunk irányt (ha van elmozdulás).
+let lastHeadingDeg = 0;
+let _prevHeadingRaw = null; // {lat,lng,ts}
+ // induláskor bekapcsolva (Saját helyem gomb visszakapcsolja)
 
 let lastRawMyLocation = null;        // {lat,lng,ts,acc}
 let filteredMyLocation = null;       // {lat,lng,ts}
@@ -529,12 +539,12 @@ async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
   }
 
 if (!myLocationMarker) {
-    myLocationMarker = L.marker(ll, { icon: userIconForZoom(map.getZoom()) }).addTo(map);
+    myLocationMarker = L.marker(ll, { icon: myLocArrowIconForZoomHeading(map.getZoom(), lastHeadingDeg) }).addTo(map);
     myLocationMarker.bindPopup(`<b>Saját hely</b><br>${escapeHtml(myLocationAddressText)}`);
   } else {
     animateMarkerTo(myLocationMarker, lat, lng, GPS_MARKER_ANIM_MS);
     try {
-      myLocationMarker.setIcon(userIconForZoom(map.getZoom()));
+      myLocationMarker.setIcon(myLocArrowIconForZoomHeading(map.getZoom(), lastHeadingDeg));
     } catch (_) {}
     if (myLocationMarker.getPopup()) {
       myLocationMarker.getPopup().setContent(
@@ -563,6 +573,27 @@ function startMyLocationWatch() {
       }
 
       const nowTs = Date.now();
+// v5.41: heading frissítés (nyíl forgatás)
+// 1) ha a böngésző ad pos.coords.heading-et (főleg mobilon), használjuk
+// 2) különben két nyers pontból számolunk irányt, ha van értelmezhető elmozdulás
+const h = (typeof pos.coords.heading === "number" && isFinite(pos.coords.heading)) ? pos.coords.heading : NaN;
+if (isFinite(h)) {
+  lastHeadingDeg = (h + 360) % 360;
+  _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+} else if (_prevHeadingRaw) {
+  const dHead = distanceMeters(latRaw, lngRaw, _prevHeadingRaw.lat, _prevHeadingRaw.lng);
+  const dtHead = (nowTs - _prevHeadingRaw.ts) / 1000;
+  if (dHead >= 2 && dtHead <= 8) {
+    lastHeadingDeg = bearingDeg(_prevHeadingRaw.lat, _prevHeadingRaw.lng, latRaw, lngRaw);
+    _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+  } else if (dtHead > 8) {
+    // elavult, frissítsük bázisnak
+    _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+  }
+} else {
+  _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+}
+
 
       // Nagyon rossz pontosságnál inkább ne frissítsünk (ugrálás/beltér).
       if (acc > GPS_ACCURACY_MAX_M) {
@@ -635,7 +666,19 @@ function startMyLocationWatch() {
         if (shouldCenter && canCenterByTime) {
           lastMyLocCenterTs = nowTs;
           lastCenteredMyLocation = { lat: filteredMyLocation.lat, lng: filteredMyLocation.lng };
-          map.panTo([filteredMyLocation.lat, filteredMyLocation.lng], {
+          
+// v5.41: nav mód "heading" esetén előrenézünk (a pozíció kicsit lejjebb marad a képernyőn).
+let targetLat = filteredMyLocation.lat;
+let targetLng = filteredMyLocation.lng;
+
+if (navMode === "heading" && isFinite(speed) && speed >= 0.8 && isFinite(lastHeadingDeg)) {
+  const z = map.getZoom();
+  const aheadM = (z >= 18) ? 55 : (z >= 17) ? 75 : (z >= 16) ? 95 : 125;
+  const o = offsetLatLng(filteredMyLocation.lat, filteredMyLocation.lng, lastHeadingDeg, aheadM);
+  targetLat = o[0]; targetLng = o[1];
+}
+
+map.panTo([targetLat, targetLng], {
             animate: true,
             duration: GPS_CENTER_ANIM_S,
             easeLinearity: 0.25,
@@ -1145,7 +1188,30 @@ document.addEventListener("DOMContentLoaded", async () => {
           "Ellenőrizd, hogy a böngészőben engedélyezve van-e a helymeghatározás (lakatszimbólum a címsorban), " +
           "és hogy van-e GPS/jel."
       );
+  
+
+// v5.41: Navigáció mód váltó gomb (észak felül / haladási irány)
+const navBtn = document.getElementById("btnNavMode");
+if (navBtn) {
+  const syncNavBtn = () => {
+    const isHeading = (navMode === "heading");
+    navBtn.classList.toggle("nav-heading", isHeading);
+    navBtn.title = isHeading ? "Navigáció: haladási irány" : "Navigáció: észak felül";
+    navBtn.setAttribute("aria-label", navBtn.title);
+  };
+  syncNavBtn();
+
+  navBtn.addEventListener("click", () => {
+    navMode = (navMode === "heading") ? "north" : "heading";
+    localStorage.setItem("citymap_nav_mode", navMode);
+    syncNavBtn();
+    // azonnal érezhető legyen: középre igazítás a jelenlegi pozícióra
+    if (lastMyLocation && myLocFollowEnabled) {
+      map.panTo([lastMyLocation.lat, lastMyLocation.lng], { animate: true, duration: 0.35, easeLinearity: 0.25 });
+    }
   });
+}
+});
 
   document.getElementById("btnClear").addEventListener("click", async () => {
     if (!confirm("Biztosan törlöd az összes markert?")) return;
@@ -1476,6 +1542,55 @@ function userIconForZoom(zoom) {
     iconAnchor: [size / 2, size * 0.9],
     popupAnchor: [0, -size / 2]
   });
+}
+
+
+function myLocArrowIconForZoomHeading(zoom, headingDeg) {
+  const scale = markerScaleForZoom(zoom);
+  const size = 30 * scale;
+
+  // L.divIcon: az IMG forgatása inline style-lal történik (Leaflet alap, nincs plugin).
+  const rot = (typeof headingDeg === "number" && isFinite(headingDeg)) ? headingDeg : 0;
+
+  return L.divIcon({
+    className: "my-loc-arrow-wrap",
+    html:
+      `<img class="my-loc-arrow" src="./icons/arrow.svg" ` +
+      `style="width:${size}px;height:${size}px;transform:rotate(${rot}deg);transform-origin:50% 50%;" ` +
+      `alt="irány">`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size * 0.9],
+    popupAnchor: [0, -size / 2]
+  });
+}
+
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => d * Math.PI / 180;
+  const toDeg = (r) => r * 180 / Math.PI;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const Δλ = toRad(lng2 - lng1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  let θ = toDeg(Math.atan2(y, x));
+  θ = (θ + 360) % 360;
+  return θ;
+}
+
+function offsetLatLng(lat, lng, bearing, meters) {
+  // Nagyon kis távolságokra jó közelítés (nav kijelzéshez)
+  const R = 6378137;
+  const toRad = (d) => d * Math.PI / 180;
+  const toDeg = (r) => r * 180 / Math.PI;
+
+  const δ = meters / R;
+  const θ = toRad(bearing);
+  const φ1 = toRad(lat);
+  const λ1 = toRad(lng);
+
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+
+  return [toDeg(φ2), toDeg(λ2)];
 }
 
 

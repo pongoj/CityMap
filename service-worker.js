@@ -6,7 +6,7 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "5.31" és itt: CACHE_VERSION = "v5.40"
-const CACHE_VERSION = "v5.40";
+const CACHE_VERSION = "v5.41";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
@@ -16,7 +16,9 @@ const CORE = [
   "./manifest.json",
   "./service-worker.js",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./icons/user.png",
+  "./icons/arrow.svg"
 ];
 
 self.addEventListener("install", (event) => {

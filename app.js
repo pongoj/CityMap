@@ -1,4 +1,4 @@
-const APP_VERSION = "5.43";
+const APP_VERSION = "5.44";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1574,7 +1574,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   map = L.map("map");
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
+    maxNativeZoom: 19,
+    maxZoom: 22,
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
 
@@ -1717,75 +1718,123 @@ if (navBtn) {
   });
 
 
-  // v5.43: Új objektum felvitele csak hosszú nyomásra (nem sima kattintás)
+  // v5.44: Új objektum felvitele csak hosszú nyomásra (mobilon is)
   (function setupLongPressAddObject(){
     const container = map.getContainer();
     const LONGPRESS_MS = 550;
-    const MOVE_TOL_PX = 10;
+    const MOVE_TOL_PX = 12;
+
     let timer = null;
     let startPt = null;
-    let startEv = null;
+    let startEvt = null;
+    let activePointerId = null;
+    let suppressClickUntil = 0;
 
     function clear(){
       if (timer) { clearTimeout(timer); timer = null; }
       startPt = null;
-      startEv = null;
+      startEvt = null;
+      activePointerId = null;
+    }
+
+    function getPrimaryEvent(ev){
+      // TouchEvent -> Touch point; Pointer/Mouse -> itself
+      if (ev.touches && ev.touches[0]) return ev.touches[0];
+      if (ev.changedTouches && ev.changedTouches[0]) return ev.changedTouches[0];
+      return ev;
     }
 
     function getPoint(ev){
-      const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]);
-      const x = t ? t.clientX : ev.clientX;
-      const y = t ? t.clientY : ev.clientY;
+      const e = getPrimaryEvent(ev);
+      const x = typeof e.clientX === 'number' ? e.clientX : 0;
+      const y = typeof e.clientY === 'number' ? e.clientY : 0;
       return {x,y};
+    }
+
+    function eventToLatLng(ev){
+      const e = getPrimaryEvent(ev);
+      const cp = map.mouseEventToContainerPoint(e); // needs clientX/Y
+      return map.containerPointToLatLng(cp);
     }
 
     function trigger(ev){
       if (!ev) return;
       // Mozgatás módban a sima kattintás kezeli, longpress ne zavarjon be
       if (moveModeMarkerId) return;
-      const latlngRaw = map.mouseEventToLatLng(ev);
+
+      suppressClickUntil = Date.now() + 800;
+
+      try { if (ev.preventDefault) ev.preventDefault(); } catch(_){}
+      try { if (ev.stopPropagation) ev.stopPropagation(); } catch(_){}
+
+      const latlngRaw = eventToLatLng(ev);
       const ll = rotatedClickLatLng({ latlng: latlngRaw, originalEvent: ev });
       openModal(ll);
     }
 
     function onDown(ev){
-      // Csak bal gomb / touch
+      // Csak bal gomb / touch / pointer
       if (ev.type === 'mousedown' && ev.button !== 0) return;
+      if (ev.type === 'pointerdown') activePointerId = ev.pointerId;
+
       startPt = getPoint(ev);
-      startEv = ev;
+      startEvt = ev;
+
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        try {
-          // ne legyen text selection / ghost click
-          if (startEv && startEv.preventDefault) startEv.preventDefault();
-        } catch(_){}
-        trigger(startEv);
+        trigger(startEvt);
+        clear();
       }, LONGPRESS_MS);
     }
 
     function onMove(ev){
       if (!startPt || !timer) return;
+      if (ev.type === 'pointermove' && activePointerId !== null && ev.pointerId !== activePointerId) return;
+
       const p = getPoint(ev);
       const dx = p.x - startPt.x;
       const dy = p.y - startPt.y;
-      if ((dx*dx + dy*dy) > (MOVE_TOL_PX*MOVE_TOL_PX)) {
-        clear();
-      }
+      if ((dx*dx + dy*dy) > (MOVE_TOL_PX*MOVE_TOL_PX)) clear();
     }
 
-    function onUp(){
+    function onUp(ev){
+      if (ev && ev.type === 'pointerup' && activePointerId !== null && ev.pointerId !== activePointerId) return;
       clear();
     }
 
+    // Pointer events (Android/modern browsers)
+    container.addEventListener('pointerdown', onDown, {passive:false});
+    container.addEventListener('pointermove', onMove, {passive:true});
+    container.addEventListener('pointerup', onUp, {passive:true});
+    container.addEventListener('pointercancel', onUp, {passive:true});
+
+    // Fallback
     container.addEventListener('mousedown', onDown, {passive:true});
-    container.addEventListener('touchstart', onDown, {passive:true});
     container.addEventListener('mousemove', onMove, {passive:true});
-    container.addEventListener('touchmove', onMove, {passive:true});
     container.addEventListener('mouseup', onUp, {passive:true});
     container.addEventListener('mouseleave', onUp, {passive:true});
+
+    // Touch fallback (iOS/older)
+    container.addEventListener('touchstart', onDown, {passive:false});
+    container.addEventListener('touchmove', onMove, {passive:true});
     container.addEventListener('touchend', onUp, {passive:true});
     container.addEventListener('touchcancel', onUp, {passive:true});
+
+    // Prevent long-press context menu on mobile
+    container.addEventListener('contextmenu', (e) => {
+      if (timer || startPt) {
+        try { e.preventDefault(); } catch(_){}
+      }
+    }, {passive:false});
+
+    // Suppress synthetic click right after longpress
+    map.on('click', (e) => {
+      if (Date.now() < suppressClickUntil) {
+        try { e.originalEvent && e.originalEvent.preventDefault && e.originalEvent.preventDefault(); } catch(_){}
+        return;
+      }
+    });
   })();
   const ok = await centerToMyLocation();
   if (!ok) map.setView([47.4979, 19.0402], 15);

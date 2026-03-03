@@ -1,4 +1,4 @@
-const APP_VERSION = "5.42.2";
+const APP_VERSION = "5.42.3";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -497,13 +497,72 @@ function initRotateWrapperIfNeeded(){
 }
 
 function setMapBearingDeg(targetDeg){
+  // DEPRECATED (v5.42.3): a tényleges forgatást egy időalapú animátor végzi
+  // a mapBearingTargetDeg felé, hogy a kompasz zaját kisimítsuk.
+  try { setMapBearingTargetDeg(targetDeg); } catch (_) {}
+}
+
+let mapBearingTargetDeg = 0;
+let _bearingAnimRaf = null;
+let _bearingAnimLastTs = 0;
+
+function setMapBearingTargetDeg(targetDeg){
+  mapBearingTargetDeg = _normDeg(targetDeg);
+  startBearingAnimator();
+}
+
+function stopBearingAnimatorIfIdle(){
+  if (_bearingAnimRaf && navMode !== "heading" && Math.abs(shortestAngleDelta(mapBearingDeg, 0)) < 0.15) {
+    try { cancelAnimationFrame(_bearingAnimRaf); } catch (_) {}
+    _bearingAnimRaf = null;
+  }
+}
+
+function startBearingAnimator(){
   try {
-    targetDeg = _normDeg(targetDeg);
-    const delta = shortestAngleDelta(mapBearingDeg, targetDeg);
-    // kis simítás, hogy ne "rángasson"
-    if (Math.abs(delta) < 0.8) return;
-    mapBearingDeg = _normDeg(mapBearingDeg + delta * 0.25);
-    if (rotateWrapper) rotateWrapper.style.transform = `rotate(${mapBearingDeg}deg)`;
+    initRotateWrapperIfNeeded();
+    if (!rotateWrapper) return;
+
+    if (_bearingAnimRaf) return;
+    _bearingAnimLastTs = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+
+    const tick = () => {
+      _bearingAnimRaf = requestAnimationFrame(tick);
+
+      if (!rotateWrapper) {
+        initRotateWrapperIfNeeded();
+        if (!rotateWrapper) return;
+      }
+
+      const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+      const dt = Math.min(0.05, Math.max(0.001, (now - _bearingAnimLastTs) / 1000));
+      _bearingAnimLastTs = now;
+
+      const delta = shortestAngleDelta(mapBearingDeg, mapBearingTargetDeg);
+      const absd = Math.abs(delta);
+
+      // deadband: a nagyon kicsi kompasz "remegést" ignoráljuk
+      const dead = 0.35; // fok
+      if (absd < dead) {
+        mapBearingDeg = mapBearingTargetDeg;
+        rotateWrapper.style.transform = `rotate(${mapBearingDeg}deg)`;
+        stopBearingAnimatorIfIdle();
+        return;
+      }
+
+      // max forgási sebesség (deg/sec) + extra csillapítás kis delta esetén
+      const maxRate = 200;
+      const maxStep = maxRate * dt;
+      let stepDeg = clamp(delta, -maxStep, maxStep);
+
+      const damp = absd > 35 ? 1.0 : absd > 15 ? 0.75 : 0.45;
+      stepDeg *= damp;
+
+      mapBearingDeg = _normDeg(mapBearingDeg + stepDeg);
+      rotateWrapper.style.transform = `rotate(${mapBearingDeg}deg)`;
+    };
+
+    _bearingAnimRaf = requestAnimationFrame(tick);
   } catch (_) {}
 }
 
@@ -515,11 +574,12 @@ function scheduleApplyNavBearing(){
       _navBearingRaf = null;
       initRotateWrapperIfNeeded();
       if (!rotateWrapper) return;
+
       if (navMode === "heading" && isFinite(lastHeadingDeg)) {
         // heading-up: a térképet a heading ellentettjével forgatjuk
-        setMapBearingDeg(_normDeg(-lastHeadingDeg));
+        setMapBearingTargetDeg(_normDeg(-lastHeadingDeg));
       } else {
-        setMapBearingDeg(0);
+        setMapBearingTargetDeg(0);
       }
     });
   } catch (_) {}
@@ -553,6 +613,10 @@ let lastHeadingDeg = 0;
 let compassHeadingDeg = NaN; // 0..360, eszköz iránytűből (állva forgásnál is)
 let _compassInited = false;
 let _compassPermGranted = false;
+
+// v5.42.3: kompasz zaj csillapítás (Google-szerűbb, kevesebb ugrálás)
+let _compassLastTs = 0;
+let _compassOutlierStreak = 0;
 
 function _normDeg(d){
   d = (d % 360 + 360) % 360;
@@ -603,11 +667,48 @@ function _handleDeviceOrientation(e){
   if (!isFinite(hdg)) return;
   hdg = _normDeg(hdg);
 
-  // enyhe simítás, hogy ne remegjen, de állva forgásra reagáljon
-  if (!isFinite(compassHeadingDeg)) compassHeadingDeg = hdg;
-  else {
+  // v5.42.3: adaptív (időalapú) simítás + deadband + outlier szűrés,
+// hogy állva se "rezegjen", de forgásra gyorsan reagáljon.
+  const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  const dt = Math.min(0.08, Math.max(0.005, _compassLastTs ? (now - _compassLastTs) / 1000 : 0.02));
+  _compassLastTs = now;
+
+  if (!isFinite(compassHeadingDeg)) {
+    compassHeadingDeg = hdg;
+    _compassOutlierStreak = 0;
+  } else {
     const delta = shortestAngleDelta(compassHeadingDeg, hdg);
-    compassHeadingDeg = _normDeg(compassHeadingDeg + delta * 0.25);
+    const absd = Math.abs(delta);
+
+    // deadband: apró remegés ignorálása
+    if (absd < 1.2) {
+      // nem frissítünk, hogy ne remegjen
+    } else {
+      // outlier: nagy hirtelen ugrásokat (pl. szenzor "flip") csak akkor engedünk át,
+      // ha egymás után többször előfordul (különben csak zaj).
+      if (absd > 95 && dt < 0.06) {
+        _compassOutlierStreak += 1;
+        if (_compassOutlierStreak < 3) {
+          // ignoráljuk
+        } else {
+          // 3 egymás után: valószínű tényleg elfordultunk
+          _compassOutlierStreak = 0;
+          compassHeadingDeg = _normDeg(compassHeadingDeg + delta * 0.35);
+        }
+      } else {
+        _compassOutlierStreak = 0;
+
+        // adaptív időállandó: nagy elfordulásra gyorsabb, kis változásra erősebb simítás
+        let tau;
+        if (absd > 35) tau = 0.12;
+        else if (absd > 15) tau = 0.22;
+        else tau = 0.75;
+
+        let alpha = 1 - Math.exp(-dt / tau);
+        alpha = clamp(alpha, 0.04, 0.35);
+        compassHeadingDeg = _normDeg(compassHeadingDeg + delta * alpha);
+      }
+    }
   }
 
   // állva forgásnál is ezt használjuk a nyílhoz

@@ -1,21 +1,5 @@
 const APP_VERSION = "5.40";
 
-let CURRENT_USER = { username: "admin", role: "admin" };
-
-function setCurrentUserLocal(u) {
-  CURRENT_USER = { username: String(u?.username || "admin"), role: String(u?.role || "felvivo") };
-  updateCurrentUserChip();
-}
-
-function updateCurrentUserChip() {
-  const el = document.getElementById("currentUserChip");
-  if (!el) return;
-  const name = CURRENT_USER?.username || "-";
-  const role = CURRENT_USER?.role || "";
-  el.textContent = role ? `${name} (${role})` : name;
-}
-
-
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
 
@@ -440,20 +424,30 @@ let myLocationWatchId = null;
 let myLocationAddressText = "Saját hely";
 let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig követjük a pozíciót)
 
-// Last known location from watchPosition (helps when getCurrentPosition fails/timeouts)
-let lastMyLocation = null; // { lat:number, lng:number, ts:number }
 
-// v5.25: GPS stabilizálás (remegés csökkentése):
-// - pontosság szűrés (accuracy > 25m esetén nem követjük térképpel)
-// - elmozdulási küszöb (3m alatt ignoráljuk a zajt)
-// - finom mozgóátlag (utolsó néhány pozíció átlaga)
-const GPS_ACCURACY_MAX_M = 25;
-const GPS_MOVE_THRESHOLD_M = 3;
-const GPS_SMOOTH_WINDOW = 5;
+// v5.40: GPS simítás (Google-szerűbb mozgás):
+// - pontosság szűrés (nagyon rossz accuracy esetén nem frissítünk)
+// - drift elleni deadzone (álló helyzetben ne remegjen)
+// - EMA (exponenciális mozgóátlag) a folyamatosabb mozgáshoz
+// - animált marker mozgatás két mérés között
+// - követés ki/be: kézi térképmozgatás letiltja, "Saját helyem" gomb visszakapcsolja
+const GPS_ACCURACY_MAX_M = 60;      // efölött nem frissítünk (beltér/rossz jel)
+const GPS_DEADZONE_MIN_M = 4;       // ennyi alatt (állva) ne mozduljon
+const GPS_DEADZONE_MAX_M = 10;      // deadzone felső korlát
+const GPS_JUMP_REJECT_M = 120;      // irreális ugrás eldobása (ha túl gyors)
+const GPS_MARKER_ANIM_MS = 650;     // marker animáció időtartam
+const GPS_CENTER_ANIM_S = 0.55;     // térkép pan animáció
+const GPS_MIN_CENTER_INTERVAL_MS = 650;
 
-let lastAcceptedMyLocation = null; // { lat, lng, ts }
-let lastCenteredMyLocation = null; // { lat, lng }
-const myLocHistory = []; // [{lat,lng}]
+let myLocFollowEnabled = true; // induláskor bekapcsolva (Saját helyem gomb visszakapcsolja)
+
+let lastRawMyLocation = null;        // {lat,lng,ts,acc}
+let filteredMyLocation = null;       // {lat,lng,ts}
+let lastCenteredMyLocation = null;   // {lat,lng}
+let lastMyLocation = null;           // { lat:number, lng:number, ts:number } (utolsó simított)
+
+const myLocWaiters = new Set(); // resolves waiting for first fix
+
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -464,14 +458,63 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
   return 2 * R * Math.asin(Math.sqrt(a));
 }
-function pushHistoryAndAverage(lat, lng) {
-  myLocHistory.push({ lat, lng });
-  while (myLocHistory.length > GPS_SMOOTH_WINDOW) myLocHistory.shift();
-  let sLat = 0, sLng = 0;
-  for (const p of myLocHistory) { sLat += p.lat; sLng += p.lng; }
-  return { lat: sLat / myLocHistory.length, lng: sLng / myLocHistory.length };
+
+function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+function pickAlpha(speedMps, accM) {
+  // lassú mozgásnál erősebb simítás; gyorsnál kisebb lag.
+  let a;
+  if (!isFinite(speedMps)) speedMps = 0;
+  if (speedMps < 0.8) a = 0.08;
+  else if (speedMps < 3) a = 0.18;
+  else if (speedMps < 8) a = 0.28;
+  else a = 0.38;
+
+  // nagyon jó pontosságnál kicsit kevésbé simítunk (gyorsabb reakció)
+  if (accM <= 8) a = Math.min(0.45, a + 0.05);
+  return a;
 }
-const myLocWaiters = new Set(); // resolves waiting for first fix
+
+let myLocAnim = { raf: null, from: null, to: null, start: 0, dur: GPS_MARKER_ANIM_MS };
+function cancelMyLocAnim() {
+  if (myLocAnim.raf) {
+    try { cancelAnimationFrame(myLocAnim.raf); } catch (_) {}
+    myLocAnim.raf = null;
+  }
+}
+
+function animateMarkerTo(marker, toLat, toLng, durationMs = GPS_MARKER_ANIM_MS) {
+  if (!marker) return;
+  const fromLL = marker.getLatLng();
+  const from = { lat: fromLL.lat, lng: fromLL.lng };
+  const to = { lat: toLat, lng: toLng };
+
+  // ha nagyon közel van, inkább csak tegyük át
+  const d = distanceMeters(from.lat, from.lng, to.lat, to.lng);
+  if (d < 0.5) {
+    marker.setLatLng([to.lat, to.lng]);
+    return;
+  }
+
+  cancelMyLocAnim();
+  myLocAnim = { raf: null, from, to, start: performance.now(), dur: durationMs };
+
+  const step = (t) => {
+    const k = clamp((t - myLocAnim.start) / myLocAnim.dur, 0, 1);
+    // easeOutCubic
+    const e = 1 - Math.pow(1 - k, 3);
+    const lat = myLocAnim.from.lat + (myLocAnim.to.lat - myLocAnim.from.lat) * e;
+    const lng = myLocAnim.from.lng + (myLocAnim.to.lng - myLocAnim.from.lng) * e;
+    marker.setLatLng([lat, lng]);
+    if (k < 1) {
+      myLocAnim.raf = requestAnimationFrame(step);
+    } else {
+      myLocAnim.raf = null;
+    }
+  };
+
+  myLocAnim.raf = requestAnimationFrame(step);
+}
 
 async function ensureMyLocationMarker(lat, lng, fetchAddressOnce = false) {
   const ll = [lat, lng];
@@ -489,7 +532,7 @@ if (!myLocationMarker) {
     myLocationMarker = L.marker(ll, { icon: userIconForZoom(map.getZoom()) }).addTo(map);
     myLocationMarker.bindPopup(`<b>Saját hely</b><br>${escapeHtml(myLocationAddressText)}`);
   } else {
-    myLocationMarker.setLatLng(ll);
+    animateMarkerTo(myLocationMarker, lat, lng, GPS_MARKER_ANIM_MS);
     try {
       myLocationMarker.setIcon(userIconForZoom(map.getZoom()));
     } catch (_) {}
@@ -519,51 +562,85 @@ function startMyLocationWatch() {
         myLocWaiters.clear();
       }
 
-      // Pontosság szűrés: rossz accuracy esetén ne kövessük a térképpel (remegés/beltér).
+      const nowTs = Date.now();
+
+      // Nagyon rossz pontosságnál inkább ne frissítsünk (ugrálás/beltér).
       if (acc > GPS_ACCURACY_MAX_M) {
-        // A nyers adatot elmentjük, de nem mozgatjuk a térképet.
-        lastMyLocation = { lat: latRaw, lng: lngRaw, ts: Date.now() };
-        // Markert sem frissítünk, hogy ne ugráljon rossz pontosságnál.
+        lastRawMyLocation = { lat: latRaw, lng: lngRaw, ts: nowTs, acc };
         return;
       }
 
-      // Elmozdulási küszöb: 3m alatt zajnak tekintjük.
-      if (lastAcceptedMyLocation) {
-        const d = distanceMeters(latRaw, lngRaw, lastAcceptedMyLocation.lat, lastAcceptedMyLocation.lng);
-        if (d < GPS_MOVE_THRESHOLD_M) {
+      // Sebesség becslés (ha nincs pos.coords.speed)
+      let speed = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
+      if (!isFinite(speed) && lastRawMyLocation) {
+        const dt = Math.max(0.001, (nowTs - lastRawMyLocation.ts) / 1000);
+        const d = distanceMeters(latRaw, lngRaw, lastRawMyLocation.lat, lastRawMyLocation.lng);
+        speed = d / dt;
+      }
+
+      // Ugrás szűrés: ha irreálisan nagy az ugrás rövid idő alatt, eldobjuk.
+      if (lastRawMyLocation) {
+        const dt = Math.max(0.001, (nowTs - lastRawMyLocation.ts) / 1000);
+        const d = distanceMeters(latRaw, lngRaw, lastRawMyLocation.lat, lastRawMyLocation.lng);
+        const impliedSpeed = d / dt;
+        if (d > GPS_JUMP_REJECT_M && impliedSpeed > 40) {
+          // pl. 120m ugrás 1-2 mp alatt
+          lastRawMyLocation = { lat: latRaw, lng: lngRaw, ts: nowTs, acc };
           return;
         }
       }
 
-      // Finom mozgóátlag a kijelzőre.
-      const sm = pushHistoryAndAverage(latRaw, lngRaw);
-      lastAcceptedMyLocation = { lat: latRaw, lng: lngRaw, ts: Date.now() };
-      lastMyLocation = { lat: sm.lat, lng: sm.lng, ts: Date.now() };
+      lastRawMyLocation = { lat: latRaw, lng: lngRaw, ts: nowTs, acc };
 
-      const shouldFetchAddress = myLocationAddressText === "Saját hely";
-      await ensureMyLocationMarker(sm.lat, sm.lng, shouldFetchAddress);
-
-      // Folyamatos követés, de remegés ellen:
-      // - a markert mindig frissítjük (ha átment a pontosság szűrésen)
-      // - a térképet csak akkor középre tesszük, ha az elmozdulás "érdemi"
-      //   (dinamikus küszöb az accuracy alapján + minimális időköz).
-      const nowTs = Date.now();
-      const minCenterIntervalMs = 700;
-      const dynThreshold = Math.min(20, Math.max(6, acc * 0.8)); // m
-      const canCenterByTime = (nowTs - lastMyLocCenterTs) >= minCenterIntervalMs;
-      let shouldCenter = false;
-
-      if (!lastCenteredMyLocation) {
-        shouldCenter = true;
+      // EMA szűrés
+      if (!filteredMyLocation) {
+        filteredMyLocation = { lat: latRaw, lng: lngRaw, ts: nowTs };
       } else {
-        const dc = distanceMeters(sm.lat, sm.lng, lastCenteredMyLocation.lat, lastCenteredMyLocation.lng);
-        if (dc >= dynThreshold) shouldCenter = true;
+        const dToFiltered = distanceMeters(latRaw, lngRaw, filteredMyLocation.lat, filteredMyLocation.lng);
+        const deadzone = clamp(Math.max(GPS_DEADZONE_MIN_M, acc * 0.35), GPS_DEADZONE_MIN_M, GPS_DEADZONE_MAX_M);
+
+        // ha gyakorlatilag állunk és a drift kicsi → ne mozdítsuk
+        if (dToFiltered < deadzone && (!isFinite(speed) || speed < 0.8)) {
+          // csak az időt frissítjük
+          filteredMyLocation.ts = nowTs;
+        } else {
+          const a = pickAlpha(speed, acc);
+          filteredMyLocation = {
+            lat: filteredMyLocation.lat + (latRaw - filteredMyLocation.lat) * a,
+            lng: filteredMyLocation.lng + (lngRaw - filteredMyLocation.lng) * a,
+            ts: nowTs,
+          };
+        }
       }
 
-      if (shouldCenter && canCenterByTime) {
-        lastMyLocCenterTs = nowTs;
-        lastCenteredMyLocation = { lat: sm.lat, lng: sm.lng };
-        map.setView([sm.lat, sm.lng], map.getZoom(), { animate: false });
+      lastMyLocation = { lat: filteredMyLocation.lat, lng: filteredMyLocation.lng, ts: nowTs };
+
+      const shouldFetchAddress = myLocationAddressText === "Saját hely";
+      await ensureMyLocationMarker(filteredMyLocation.lat, filteredMyLocation.lng, shouldFetchAddress);
+
+      // Térkép követés (ha be van kapcsolva): panTo animációval, hogy ne "ugorjon".
+      if (myLocFollowEnabled) {
+        const canCenterByTime = (nowTs - lastMyLocCenterTs) >= GPS_MIN_CENTER_INTERVAL_MS;
+        let shouldCenter = false;
+
+        if (!lastCenteredMyLocation) {
+          shouldCenter = true;
+        } else {
+          const dc = distanceMeters(filteredMyLocation.lat, filteredMyLocation.lng, lastCenteredMyLocation.lat, lastCenteredMyLocation.lng);
+          // dinamikus küszöb: jobb pontosságnál kisebb küszöb
+          const dynThreshold = clamp(Math.max(6, acc * 0.6), 6, 18);
+          if (dc >= dynThreshold) shouldCenter = true;
+        }
+
+        if (shouldCenter && canCenterByTime) {
+          lastMyLocCenterTs = nowTs;
+          lastCenteredMyLocation = { lat: filteredMyLocation.lat, lng: filteredMyLocation.lng };
+          map.panTo([filteredMyLocation.lat, filteredMyLocation.lng], {
+            animate: true,
+            duration: GPS_CENTER_ANIM_S,
+            easeLinearity: 0.25,
+          });
+        }
       }
     },
     (err) => {
@@ -587,7 +664,7 @@ function startMyLocationWatch() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 5000,
+      maximumAge: 0,
       timeout: 10000,
     }
   );
@@ -633,10 +710,12 @@ async function checkGeolocationPermissionOnStartup() {
 }
 
 async function centerToMyLocation() {
+  myLocFollowEnabled = true;
   // If we already have a recent fix from watchPosition, use it immediately.
   if (lastMyLocation && Date.now() - lastMyLocation.ts < 60_000) {
     lastMyLocCenterTs = Date.now();
-    map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: false });
+    map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: true, duration: 0.6 });
+    lastCenteredMyLocation = { lat: lastMyLocation.lat, lng: lastMyLocation.lng };
     await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, false);
     startMyLocationWatch();
     return true;
@@ -652,7 +731,8 @@ async function centerToMyLocation() {
         lastMyLocation = { lat, lng, ts: Date.now() };
 
         lastMyLocCenterTs = Date.now();
-        map.setView([lat, lng], 20, { animate: false });
+        map.setView([lat, lng], 20, { animate: true, duration: 0.6 });
+        lastCenteredMyLocation = { lat, lng };
         await ensureMyLocationMarker(lat, lng, true);
 
         startMyLocationWatch();
@@ -680,7 +760,8 @@ async function centerToMyLocation() {
 
   if (!ok || !lastMyLocation) return false;
 
-  map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: false });
+  map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: true, duration: 0.6 });
+  lastCenteredMyLocation = { lat: lastMyLocation.lat, lng: lastMyLocation.lng };
   await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, true);
   return true;
 }
@@ -726,7 +807,7 @@ function wirePopupDelete(marker, dbId) {
       );
       if (!ok) return;
 
-      await DB.softDeleteMarker(dbId, { deletedBy: CURRENT_USER.username, updatedBy: CURRENT_USER.username });
+      await DB.softDeleteMarker(dbId);
       map.removeLayer(marker);
       markerLayers.delete(dbId);
 
@@ -800,8 +881,7 @@ mk.__data = m;
 
   mk.on("dragend", async (e) => {
     const p = e.target.getLatLng();
-    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng, updatedAt: Date.now(),
-      updatedBy: CURRENT_USER.username });
+    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng, updatedAt: Date.now() });
 
     const updated = await getMarker(m.id);
     if (updated) mk.setPopupContent(popupHtml(updated));
@@ -958,11 +1038,8 @@ async function saveMarker() {
     statusLabel: statusSel.options[statusSel.selectedIndex]?.textContent || statusSel.value,
     notes: document.getElementById("fNotes").value.trim(),
     createdAt: Date.now(),
-    createdBy: CURRENT_USER.username,
     updatedAt: Date.now(),
-    updatedBy: CURRENT_USER.username,
     deletedAt: null,
-    deletedBy: null,
     uuid
   };
 
@@ -1018,10 +1095,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
 
-  await DB.init();
+  // v5.40: ha a felhasználó kézzel mozgatja/zoomolja a térképet, kikapcsoljuk a GPS-követést.
+  // A "Saját helyem" gomb visszakapcsolja.
+  map.on("dragstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
+  map.on("zoomstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
 
-  // Active user (v5.40)
-  setCurrentUserLocal(await DB.ensureDefaultUser());
+  await DB.init();
 
   // DB migrations / safety cleanups (uuid backfill, invalid photo rows)
   await DB.backfillMarkerMeta();
@@ -2010,8 +2089,8 @@ function setSettingsPage(page) {
     renderSettingsPlaceholderPage();
   } else if (page === "users") {
     titleEl.textContent = "Felhasználó kezelés";
-    hintEl.textContent = "Felhasználók és aktív felhasználó kiválasztása (helyi / IndexedDB).";
-    renderSettingsUsersPage();
+    hintEl.textContent = "Itt később a felhasználók kezelése (jogosultságok, admin, felvivő stb.) lesz elérhető.";
+    renderSettingsPlaceholderPage();
   } else {
     titleEl.textContent = "Objektum típusa";
     hintEl.textContent = "Típusok kezelése (helyi adatbázis / IndexedDB).";
@@ -2403,129 +2482,6 @@ function renderSettingsPlaceholderPage() {
   const container = document.getElementById("settingsExtra");
   if (!container) return;
   container.innerHTML = "";
-
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-  }[c]));
-}
-
-async function renderSettingsUsersPage() {
-  const container = document.getElementById("settingsExtra");
-  if (!container) return;
-  container.innerHTML = "";
-
-  const users = await DB.getAllUsers();
-  const cur = await DB.getCurrentUser();
-  const curName = cur?.username || "";
-
-  const wrap = document.createElement("div");
-  wrap.style.display = "grid";
-  wrap.style.gap = "12px";
-
-  const top = document.createElement("div");
-  top.innerHTML = `
-    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-      <div style="font-weight:800;">Aktív felhasználó:</div>
-      <div style="padding:6px 10px; border-radius:12px; background:#eef2f7; font-weight:800;">
-        ${escapeHtml(curName || "-")}
-      </div>
-      <button class="btn btn-ghost" id="btnUsersReload" type="button">Frissítés</button>
-    </div>
-  `;
-  wrap.appendChild(top);
-
-  const list = document.createElement("div");
-  list.innerHTML = `
-    <table style="width:100%; border-collapse:collapse;">
-      <thead>
-        <tr>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;">Név</th>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;">Szerep</th>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;">Művelet</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${(users || []).map(u => `
-          <tr>
-            <td style="padding:8px; border-bottom:1px solid #f1f5f9; font-weight:800;">${escapeHtml(u.username)}</td>
-            <td style="padding:8px; border-bottom:1px solid #f1f5f9;">${escapeHtml(u.role || "felvivo")}</td>
-            <td style="padding:8px; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-ghost btn-user-set" data-user="${escapeHtml(u.username)}" type="button">Aktív</button>
-              <button class="btn btn-ghost btn-user-del" data-user="${escapeHtml(u.username)}" type="button" ${u.username===curName ? "disabled" : ""}>Törlés</button>
-            </td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-  `;
-  wrap.appendChild(list);
-
-  const add = document.createElement("div");
-  add.innerHTML = `
-    <div style="border-top:1px solid #e5e7eb; padding-top:12px; display:grid; gap:10px;">
-      <div style="font-weight:800;">Új / módosítás</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <input id="uName" placeholder="felhasználónév" style="padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb; min-width: 180px;" />
-        <select id="uRole" style="padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb;">
-          <option value="admin">admin</option>
-          <option value="felvivo">felvivő</option>
-        </select>
-        <button class="btn btn-add" id="btnUserSave" type="button">Mentés</button>
-      </div>
-      <div class="small" style="color:#6b7280;">
-        Megjegyzés: ez még helyi (IndexedDB) felhasználólista. Később online auth váltja.
-      </div>
-    </div>
-  `;
-  wrap.appendChild(add);
-
-  container.appendChild(wrap);
-
-  // wire events
-  const reload = document.getElementById("btnUsersReload");
-  if (reload) reload.onclick = () => renderSettingsUsersPage();
-
-  container.querySelectorAll(".btn-user-set").forEach((b) => {
-    b.addEventListener("click", async (ev) => {
-      const u = ev.currentTarget?.dataset?.user;
-      if (!u) return;
-      await DB.setCurrentUser(u);
-      setCurrentUserLocal(await DB.ensureDefaultUser());
-      showHint("Aktív felhasználó beállítva: " + u);
-      renderSettingsUsersPage();
-    });
-  });
-
-  container.querySelectorAll(".btn-user-del").forEach((b) => {
-    b.addEventListener("click", async (ev) => {
-      const u = ev.currentTarget?.dataset?.user;
-      if (!u) return;
-      if (u === curName) return;
-      const ok = confirm("Biztosan törlöd a felhasználót: " + u + " ?");
-      if (!ok) return;
-      await DB.deleteUser(u);
-      // if list becomes empty, re-create admin
-      setCurrentUserLocal(await DB.ensureDefaultUser());
-      showHint("Felhasználó törölve.");
-      renderSettingsUsersPage();
-    });
-  });
-
-  const saveBtn = document.getElementById("btnUserSave");
-  if (saveBtn) {
-    saveBtn.onclick = async () => {
-      const name = (document.getElementById("uName")?.value || "").trim();
-      const role = (document.getElementById("uRole")?.value || "felvivo").trim();
-      if (!name) { alert("A felhasználónév kötelező."); return; }
-      await DB.upsertUser({ username: name, role });
-      showHint("Felhasználó mentve.");
-      (document.getElementById("uName")).value = "";
-      renderSettingsUsersPage();
-    };
-  }
-}
 }
 
 function renderSettingsObjectTypesPage() {

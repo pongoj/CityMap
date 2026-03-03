@@ -1,4 +1,4 @@
-const APP_VERSION = "5.50.1";
+const APP_VERSION = "5.50.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -599,10 +599,13 @@ function setMapBearingTargetDeg(targetDeg){
 }
 
 function stopBearingAnimatorIfIdle(){
-  if (_bearingAnimRaf && navMode !== "heading" && Math.abs(shortestAngleDelta(mapBearingDeg, 0)) < 0.15) {
-    try { cancelAnimationFrame(_bearingAnimRaf); } catch (_) {}
-    _bearingAnimRaf = null;
-  }
+  // v5.50.2: ha elértük a célszöget, állítsuk le az animációt (ne fusson feleslegesen folyamatosan)
+  try {
+    if (_bearingAnimRaf && Math.abs(shortestAngleDelta(mapBearingDeg, mapBearingTargetDeg)) < 0.02) {
+      try { cancelAnimationFrame(_bearingAnimRaf); } catch (_) {}
+      _bearingAnimRaf = null;
+    }
+  } catch (_) {}
 }
 
 function startBearingAnimator(){
@@ -834,7 +837,8 @@ function _handleDeviceOrientation(e){
   if (_shouldUseCompassHeading() && isFinite(fusedHeadingDeg)) {
     lastHeadingDeg = fusedHeadingDeg;
     _updateMyLocIconHeading();
-    scheduleApplyNavBearing();
+    // v5.50.2: térkép forgatást nem frissítünk automatikusan (remegés ellen)
+      // scheduleApplyNavBearing();
   }
 }
 
@@ -872,7 +876,8 @@ function _handleDeviceMotion(e){
     if (_shouldUseCompassHeading() && isFinite(fusedHeadingDeg)) {
       lastHeadingDeg = fusedHeadingDeg;
       _updateMyLocIconHeading();
-      scheduleApplyNavBearing();
+      // v5.50.2: térkép forgatást nem frissítünk automatikusan (remegés ellen)
+      // scheduleApplyNavBearing();
     }
   } catch (_) {}
 }
@@ -1091,7 +1096,8 @@ function startMyLocationWatch() {
       }
 
 
-      scheduleApplyNavBearing();
+      // v5.50.2: térkép forgatás nem frissül automatikusan GPS pontokból (remegés ellen)
+      // scheduleApplyNavBearing();
 
       // Nagyon rossz pontosságnál inkább ne frissítsünk (ugrálás/beltér).
       if (acc > GPS_ACCURACY_MAX_M) {
@@ -1790,7 +1796,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
   initRotateWrapperIfNeeded();
   startCompassIfPossible();
-  scheduleApplyNavBearing();
+  // v5.50.2: nem forgatjuk automatikusan a térképet induláskor
+  // scheduleApplyNavBearing();
 
 
   // v5.40: ha a felhasználó kézzel mozgatja/zoomolja a térképet, kikapcsoljuk a GPS-követést.

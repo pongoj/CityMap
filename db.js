@@ -1,7 +1,7 @@
 const DB_NAME = "citymap-db";
 // v5.11: photos stored locally (IndexedDB) and linked to marker uuid
 // v5.21: object types stored in IndexedDB (settings)
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const DB = {
   _db: null,
@@ -49,6 +49,13 @@ const DB = {
           ot.createIndex("by_internalId", "internalId", { unique: false });
           ot.createIndex("by_type", "type", { unique: false });
         }
+
+        // Objektum állapotok (Beállítások / Objektum állapota) - v5.47
+        if (!db.objectStoreNames.contains("objectStatuses")) {
+          const os = db.createObjectStore("objectStatuses", { keyPath: "id", autoIncrement: true });
+          os.createIndex("by_internalId", "internalId", { unique: false });
+          os.createIndex("by_status", "status", { unique: false });
+        }
       };
 
       req.onsuccess = () => { this._db = req.result; resolve(); };
@@ -75,6 +82,23 @@ const DB = {
         { code: "BALESET", label: "Balesetveszélyes" }
       ]);
     }
+
+    // v5.47: ha az Objektum állapotok táblázat üres, töltsük fel az alap markerStatus listából
+    try {
+      const existing = await this.getAllObjectStatuses();
+      if (!existing || existing.length === 0) {
+        const base = await this.getLookup("markerStatus") || [];
+        for (const x of base) {
+          await this.addObjectStatus({
+            internalId: String(x.code || ""),
+            status: String(x.label || ""),
+            description: "",
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          });
+        }
+      }
+    } catch (_) { /* ignore */ }
   },
 
   async backfillMarkerMeta() {
@@ -337,10 +361,64 @@ const DB = {
       g.onerror = () => reject(g.error);
     });
   },
-
   deleteObjectType(id) {
     return new Promise((resolve, reject) => {
       const s = this._store("objectTypes", "readwrite");
+      const r = s.delete(id);
+      r.onsuccess = () => resolve(true);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
+  // ---------------------------
+  // Objektum állapotok (v5.47)
+  // ---------------------------
+
+  getAllObjectStatuses() {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectStatuses", "readonly");
+      const req = s.openCursor();
+      const out = [];
+      req.onsuccess = (ev) => {
+        const cur = ev.target.result;
+        if (!cur) {
+          out.sort((a, b) => (a.id || 0) - (b.id || 0));
+          return resolve(out);
+        }
+        out.push({ id: cur.primaryKey, ...cur.value });
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  addObjectStatus(rec) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectStatuses", "readwrite");
+      const r = s.add(rec);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
+  updateObjectStatus(id, patch) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectStatuses", "readwrite");
+      const g = s.get(id);
+      g.onsuccess = () => {
+        const cur = g.result;
+        if (!cur) return resolve(false);
+        const put = s.put({ ...cur, ...patch });
+        put.onsuccess = () => resolve(true);
+        put.onerror = () => reject(put.error);
+      };
+      g.onerror = () => reject(g.error);
+    });
+  },
+
+  deleteObjectStatus(id) {
+    return new Promise((resolve, reject) => {
+      const s = this._store("objectStatuses", "readwrite");
       const r = s.delete(id);
       r.onsuccess = () => resolve(true);
       r.onerror = () => reject(r.error);

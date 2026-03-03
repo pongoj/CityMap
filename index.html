@@ -66,32 +66,6 @@
         z-index: 2;
         background: #f9fafb;
       }
-
-      
-      /* Mobil: szűrés ablak lehúzható bezárás (drag handle) */
-      .modal-drag-handle{
-        width: 54px;
-        height: 6px;
-        border-radius: 999px;
-        background: #cbd5e1;
-        margin: 10px auto 0;
-        display: none;
-              touch-action: none;
-        user-select: none;
-}
-
-      html.filter-modal-open, body.filter-modal-open{
-        overscroll-behavior-y: none;
-      }
-
-      #filterModal{
-        overscroll-behavior: contain;
-      }
-      @media (max-width: 640px){
-        .modal-drag-handle{ display:block; }
-        /* Mobilon ne legyen X gomb, helyette lehúzás */
-        #btnFilterClose{ display:none !important; }
-      }
 /* Mobil helytakarékosság: kisebb fejléc */
       #filterModal .filter-table thead th{
         padding: 4px 8px;
@@ -197,7 +171,23 @@
       border-bottom: 1px solid #e5e7eb;
       background: #fff;
     }
-    #settingsModal .settings-shell{
+    
+    @media (max-width: 640px){
+      /* Mobilon a cím menjen a gombok fölé */
+      .settings-header{
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .settings-header > div:last-child{
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+      /* X gomb mobilon is legyen látható */
+      #btnFilterClose{ display:inline-flex !important; }
+    }
+#settingsModal .settings-shell{
       display:flex;
       flex: 1 1 auto;
       min-height: 0;
@@ -908,9 +898,7 @@
   
   <div id="filterModal" class="modal">
     <div class="modal-content filter-modal">
-      <div class="modal-drag-handle" id="filterDragHandle" aria-hidden="true"></div>
-
-      <div class="settings-header">
+<div class="settings-header">
         <div style="font-weight:800; font-size:20px;">Szűrés</div>
         <div style="display:flex; gap:8px; align-items:center;">
           

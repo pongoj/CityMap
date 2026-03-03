@@ -1,4 +1,4 @@
-const APP_VERSION = "5.45.2";
+const APP_VERSION = "5.46";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -436,13 +436,12 @@ let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig k
 // - animált marker mozgatás két mérés között
 // - követés ki/be: kézi térképmozgatás letiltja, "Saját helyem" gomb visszakapcsolja
 const GPS_ACCURACY_MAX_M = 60;      // efölött nem frissítünk (beltér/rossz jel)
-const GPS_DEADZONE_MIN_M = 6;       // ennyi alatt (állva) ne mozduljon
-const GPS_DEADZONE_MAX_M = 14;      // deadzone felső korlát
+const GPS_DEADZONE_MIN_M = 4;       // ennyi alatt (állva) ne mozduljon
+const GPS_DEADZONE_MAX_M = 10;      // deadzone felső korlát
 const GPS_JUMP_REJECT_M = 120;      // irreális ugrás eldobása (ha túl gyors)
 const GPS_MARKER_ANIM_MS = 650;     // marker animáció időtartam
 const GPS_CENTER_ANIM_S = 0.55;     // térkép pan animáció
 const GPS_MIN_CENTER_INTERVAL_MS = 650;
-const GPS_STATIONARY_CENTER_HOLD_M = 14; // álló helyzetben ekkora driftnél még ne középre igazítsunk
 
 let myLocFollowEnabled = true;
 // v5.41: Navigáció mód (térkép követés viselkedése)
@@ -1003,8 +1002,7 @@ function startMyLocationWatch() {
       const hGeo = geoHeadingOk ? _normDeg(pos.coords.heading) : NaN;
 
       // Iránytű heading-et a deviceorientation event frissíti (compassHeadingDeg).
-      const hCompassRaw = (typeof compassHeadingDeg === "number" && isFinite(compassHeadingDeg)) ? _normDeg(compassHeadingDeg) : NaN;
-      const hCompass = _shouldUseCompassHeading() ? hCompassRaw : NaN;
+      const hCompass = (typeof compassHeadingDeg === "number" && isFinite(compassHeadingDeg)) ? _normDeg(compassHeadingDeg) : NaN;
 
       if (isFinite(hGeo)) {
         lastHeadingDeg = hGeo;
@@ -1105,10 +1103,7 @@ function startMyLocationWatch() {
         } else {
           const dc = distanceMeters(filteredMyLocation.lat, filteredMyLocation.lng, lastCenteredMyLocation.lat, lastCenteredMyLocation.lng);
           // dinamikus küszöb: jobb pontosságnál kisebb küszöb
-          let dynThreshold = clamp(Math.max(6, acc * 0.6), 6, 18);
-          if (!isFinite(speed) || speed < 0.8) {
-            dynThreshold = Math.max(dynThreshold, GPS_STATIONARY_CENTER_HOLD_M);
-          }
+          const dynThreshold = clamp(Math.max(6, acc * 0.6), 6, 18);
           if (dc >= dynThreshold) shouldCenter = true;
         }
 

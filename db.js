@@ -99,6 +99,23 @@ const DB = {
         }
       }
     } catch (_) { /* ignore */ }
+
+    // v5.48: ha az Objektum típusok táblázat üres, töltsük fel az alap markerTypes listából
+    try {
+      const existingT = await this.getAllObjectTypes();
+      if (!existingT || existingT.length === 0) {
+        const baseT = await this.getLookup("markerTypes") || [];
+        for (const x of baseT) {
+          await this.addObjectType({
+            internalId: String(x.code || ""),
+            type: String(x.label || ""),
+            description: "",
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          });
+        }
+      }
+    } catch (_) { /* ignore */ }
   },
 
   async backfillMarkerMeta() {

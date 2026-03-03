@@ -1,4 +1,4 @@
-const APP_VERSION = "5.47";
+const APP_VERSION = "5.48";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1394,7 +1394,8 @@ async function getMarker(id) {
 }
 
 function addMarkerToMap(m) {
-  const mk = L.marker([m.lat, m.lng], { draggable: false, icon: iconForType(m.type) }).addTo(map);
+  const tCode = m?.typeInternalId || m?.type || "";
+  const mk = L.marker([m.lat, m.lng], { draggable: false, icon: iconForType(tCode) }).addTo(map);
 mk.__data = m;
   mk.bindPopup(popupHtml(m));
   wirePopupDelete(mk, m.id);
@@ -1453,11 +1454,26 @@ async function openEditModal(marker) {
 
   // Típus (nem módosítható)
   const typeSel = document.getElementById("fType");
-  if (typeSel) typeSel.value = marker.type || typeSel.value;
+  if (typeSel) {
+    // v5.48: ID alapú mentés (typeId), fallback régi mezőkre
+    if (marker.typeId) {
+      typeSel.value = String(marker.typeId);
+    } else if (marker.type) {
+      const opt = Array.from(typeSel.options).find(o => (o.dataset.internalId || "") === String(marker.type));
+      if (opt) typeSel.value = opt.value;
+    }
+  }
 
   // Állapot + megjegyzés (módosítható)
   const statusSel = document.getElementById("fStatus");
-  if (statusSel) statusSel.value = marker.status || statusSel.value;
+  if (statusSel) {
+    if (marker.statusId) {
+      statusSel.value = String(marker.statusId);
+    } else if (marker.status) {
+      const opt = Array.from(statusSel.options).find(o => (o.dataset.internalId || "") === String(marker.status));
+      if (opt) statusSel.value = opt.value;
+    }
+  }
   document.getElementById("fNotes").value = marker.notes || "";
 
   // Fotók hozzáadás: a marker UUID-hoz kötjük
@@ -1476,15 +1492,26 @@ async function loadMarkers() {
 }
 
 async function fillLookups() {
-  const types = await DB.getLookup("markerTypes") || [];
-  const statuses = await DB.getLookup("markerStatus") || [];
+  // v5.48: felvitel/szerkesztés a Beállításokban tárolt típusok/állapotok alapján
+  let types = await DB.getAllObjectTypes().catch(() => []) || [];
+  let statuses = await DB.getAllObjectStatuses().catch(() => []) || [];
+  // Fallback (régi beégetett lookup) – ha az admin táblák üresek
+  if (!types || types.length === 0) {
+    const base = await DB.getLookup("markerTypes") || [];
+    types = base.map((x, i) => ({ id: i + 1, internalId: x.code, type: x.label, description: "" }));
+  }
+  if (!statuses || statuses.length === 0) {
+    const base = await DB.getLookup("markerStatus") || [];
+    statuses = base.map((x, i) => ({ id: i + 1, internalId: x.code, status: x.label, description: "" }));
+  }
 
   const typeSel = document.getElementById("fType");
   typeSel.innerHTML = "";
   types.forEach(t => {
     const o = document.createElement("option");
-    o.value = t.code;
-    o.textContent = t.label;
+    o.value = String(t.id);
+    o.textContent = String(t.type || "");
+    o.dataset.internalId = String(t.internalId || "");
     typeSel.appendChild(o);
   });
 
@@ -1492,8 +1519,9 @@ async function fillLookups() {
   statusSel.innerHTML = "";
   statuses.forEach(s => {
     const o = document.createElement("option");
-    o.value = s.code;
-    o.textContent = s.label;
+    o.value = String(s.id);
+    o.textContent = String(s.status || "");
+    o.dataset.internalId = String(s.internalId || "");
     statusSel.appendChild(o);
   });
 }
@@ -1504,12 +1532,15 @@ async function saveMarker() {
     if (!editingMarkerId) return;
     const statusSel = document.getElementById("fStatus");
     const notes = document.getElementById("fNotes").value.trim();
-    const status = statusSel ? statusSel.value : "";
-    const statusLabel = statusSel ? (statusSel.options[statusSel.selectedIndex]?.textContent || status) : status;
+    const statusId = statusSel ? Number(statusSel.value) : null;
+    const statusLabel = statusSel ? (statusSel.options[statusSel.selectedIndex]?.textContent || "") : "";
+    const statusInternalId = statusSel ? (statusSel.options[statusSel.selectedIndex]?.dataset?.internalId || "") : "";
 
     await DB.updateMarker(editingMarkerId, {
-      status,
-      statusLabel,
+      statusId: Number.isFinite(statusId) ? statusId : null,
+      status: String(statusInternalId || ""),
+      statusLabel: String(statusLabel || ""),
+      statusInternalId: String(statusInternalId || ""),
       notes,
       updatedAt: Date.now()
     });
@@ -1543,14 +1574,26 @@ async function saveMarker() {
   const statusSel = document.getElementById("fStatus");
 
   const uuid = currentDraftUuid || genUuid();
+  const typeId = Number(typeSel?.value);
+  const statusId = Number(statusSel?.value);
+  const typeOpt = typeSel && typeSel.selectedIndex >= 0 ? typeSel.options[typeSel.selectedIndex] : null;
+  const statusOpt = statusSel && statusSel.selectedIndex >= 0 ? statusSel.options[statusSel.selectedIndex] : null;
+  const typeInternalId = typeOpt ? (typeOpt.dataset?.internalId || "") : "";
+  const statusInternalId = statusOpt ? (statusOpt.dataset?.internalId || "") : "";
   const marker = {
     lat: pendingLatLng.lat,
     lng: pendingLatLng.lng,
     address,
-    type: typeSel.value,
-    typeLabel: typeSel.options[typeSel.selectedIndex]?.textContent || typeSel.value,
-    status: statusSel.value,
-    statusLabel: statusSel.options[statusSel.selectedIndex]?.textContent || statusSel.value,
+    // v5.48: a marker a kiválasztott típus/állapot ID-t menti (nem beégetett kódot)
+    typeId: Number.isFinite(typeId) ? typeId : null,
+    statusId: Number.isFinite(statusId) ? statusId : null,
+    // kompatibilitás / ikonok: belső azonosító(k) külön is megmaradnak
+    type: String(typeInternalId || ""),
+    status: String(statusInternalId || ""),
+    typeInternalId: String(typeInternalId || ""),
+    statusInternalId: String(statusInternalId || ""),
+    typeLabel: String(typeOpt?.textContent || ""),
+    statusLabel: String(statusOpt?.textContent || ""),
     notes: document.getElementById("fNotes").value.trim(),
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -2373,8 +2416,17 @@ function initFilterDragClose() {
 
 
 async function fillFilterCombos() {
-  const types = await DB.getLookup("markerTypes") || [];
-  const statuses = await DB.getLookup("markerStatus") || [];
+  // v5.48: szűrés a Beállításokban tárolt típusok/állapotok alapján
+  let types = await DB.getAllObjectTypes().catch(() => []) || [];
+  let statuses = await DB.getAllObjectStatuses().catch(() => []) || [];
+  if (!types || types.length === 0) {
+    const base = await DB.getLookup("markerTypes") || [];
+    types = base.map((x, i) => ({ id: i + 1, internalId: x.code, type: x.label }));
+  }
+  if (!statuses || statuses.length === 0) {
+    const base = await DB.getLookup("markerStatus") || [];
+    statuses = base.map((x, i) => ({ id: i + 1, internalId: x.code, status: x.label }));
+  }
 
   const t = document.getElementById("sfType");
   const s = document.getElementById("sfStatus");
@@ -2383,16 +2435,18 @@ async function fillFilterCombos() {
   t.innerHTML = '<option value="">Összes</option>';
   types.forEach(x => {
     const o = document.createElement("option");
-    o.value = x.code;
-    o.textContent = x.label;
+    o.value = String(x.id);
+    o.textContent = String(x.type || "");
+    o.dataset.internalId = String(x.internalId || "");
     t.appendChild(o);
   });
 
   s.innerHTML = '<option value="">Összes</option>';
   statuses.forEach(x => {
     const o = document.createElement("option");
-    o.value = x.code;
-    o.textContent = x.label;
+    o.value = String(x.id);
+    o.textContent = String(x.status || "");
+    o.dataset.internalId = String(x.internalId || "");
     s.appendChild(o);
   });
 }
@@ -2785,38 +2839,22 @@ function applyFilter() {
   const typeSel = document.getElementById("sfType");
   const statusSel = document.getElementById("sfStatus");
 
-  const tCode = (typeSel?.value || "").trim();
-  const sCode = (statusSel?.value || "").trim();
-
-  let tLabel = (typeSel && typeSel.selectedIndex >= 0)
-    ? (typeSel.options[typeSel.selectedIndex]?.textContent || "").trim()
+  const tId = Number((typeSel?.value || "").trim());
+  const sId = Number((statusSel?.value || "").trim());
+  const hasType = Number.isFinite(tId) && tId > 0;
+  const hasStatus = Number.isFinite(sId) && sId > 0;
+  const tInternal = (hasType && typeSel && typeSel.selectedIndex >= 0)
+    ? (typeSel.options[typeSel.selectedIndex]?.dataset?.internalId || "")
     : "";
-  let sLabel = (statusSel && statusSel.selectedIndex >= 0)
-    ? (statusSel.options[statusSel.selectedIndex]?.textContent || "").trim()
+  const sInternal = (hasStatus && statusSel && statusSel.selectedIndex >= 0)
+    ? (statusSel.options[statusSel.selectedIndex]?.dataset?.internalId || "")
     : "";
-
-  // "Összes" opció esetén ne szűrjünk label alapján sem
-  if (!tCode || tCode === "") tLabel = "";
-  if (!sCode || sCode === "") sLabel = "";
-  if (tLabel === "Összes") tLabel = "";
-  if (sLabel === "Összes") sLabel = "";
 
   const res = (_allMarkersCache || []).filter((m) => {
     const addr = String(m?.address || "").toLowerCase();
 
-    const typeOk =
-      (!tCode && !tLabel) ||
-      m?.type === tCode ||
-      m?.typeLabel === tCode ||
-      m?.type === tLabel ||
-      m?.typeLabel === tLabel;
-
-    const statusOk =
-      (!sCode && !sLabel) ||
-      m?.status === sCode ||
-      m?.statusLabel === sCode ||
-      m?.status === sLabel ||
-      m?.statusLabel === sLabel;
+    const typeOk = !hasType || (Number(m?.typeId) === tId) || (!!tInternal && (String(m?.typeInternalId || m?.type || "") === String(tInternal)));
+    const statusOk = !hasStatus || (Number(m?.statusId) === sId) || (!!sInternal && (String(m?.statusInternalId || m?.status || "") === String(sInternal)));
 
     const addrOk = !a || addr.includes(a);
     const notes = String(m?.notes || "").toLowerCase();

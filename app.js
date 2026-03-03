@@ -1,4 +1,4 @@
-const APP_VERSION = "5.45";
+const APP_VERSION = "5.45.1";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1673,10 +1673,8 @@ if (btnMyLocFab) {
     const ok = await centerToMyLocation();
     if (!ok) {
       alert(
-        "Nem sikerült lekérni a pozíciót.
-
-" +
-        "Ellenőrizd, hogy engedélyezve van-e a helymeghatározás, és hogy van-e GPS/jel."
+	        "Nem sikerült lekérni a pozíciót.\n\n" +
+	        "Ellenőrizd, hogy engedélyezve van-e a helymeghatározás, és hogy van-e GPS/jel."
       );
     }
     updateMyLocFabVisibility();

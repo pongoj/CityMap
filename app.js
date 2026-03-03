@@ -1,4 +1,4 @@
-const APP_VERSION = "5.49";
+const APP_VERSION = "5.50";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -48,7 +48,11 @@ let map;
 let pendingLatLng = null;
 
 // Objektum módosítás (markerModal újrafelhasználása)
-let markerModalMode = "add"; // "add" | "edit"
+let markerModalMode = "add";
+  const tb = document.getElementById('fTypeBtn'); if (tb) tb.disabled = false;
+  const sb = document.getElementById('fStatusBtn'); if (sb) sb.disabled = false;
+  setPickerValue('type', null);
+  setPickerValue('status', null); // "add" | "edit"
 let editingMarkerId = null;
 let editingMarkerUuid = null;
 
@@ -270,6 +274,11 @@ function genUuid() {
 let _typeMetaById = new Map();
 let _markerSvgUrlCache = new Map();
 
+// v5.50: Típus/Állapot választó (szép, táblázatos lenyíló)
+let _formTypes = [];
+let _formStatuses = [];
+
+
 function setTypeMetaCache(types) {
   _typeMetaById = new Map();
   (types || []).forEach((t) => {
@@ -409,6 +418,10 @@ function showHint(text, ms = 2500) {
 
 function openModal(latlng) {
   markerModalMode = "add";
+  const tb = document.getElementById('fTypeBtn'); if (tb) tb.disabled = false;
+  const sb = document.getElementById('fStatusBtn'); if (sb) sb.disabled = false;
+  setPickerValue('type', null);
+  setPickerValue('status', null);
   editingMarkerId = null;
   editingMarkerUuid = null;
   pendingLatLng = latlng;
@@ -455,6 +468,10 @@ async function closeModal() {
   }
 
   markerModalMode = "add";
+  const tb = document.getElementById('fTypeBtn'); if (tb) tb.disabled = false;
+  const sb = document.getElementById('fStatusBtn'); if (sb) sb.disabled = false;
+  setPickerValue('type', null);
+  setPickerValue('status', null);
   editingMarkerId = null;
   editingMarkerUuid = null;
   currentDraftUuid = null;
@@ -1450,15 +1467,28 @@ mk.__data = m;
   updateShowAllButtonVisibility();
 }
 
+function refreshAllMarkerIcons() {
+  try {
+    markerLayers.forEach((mk, id) => {
+      const d = mk && mk.__data ? mk.__data : null;
+      if (!d) return;
+      mk.setIcon(iconForMarker(d, map.getZoom()));
+    });
+  } catch (e) {
+    console.warn('refreshAllMarkerIcons failed', e);
+  }
+}
+
+
 function setMarkerModalControlsDisabled({ addressLocked }) {
   const city = document.getElementById("fCity");
   const street = document.getElementById("fStreet");
   const house = document.getElementById("fHouse");
-  const type = document.getElementById("fType");
+  const typeBtn = document.getElementById("fTypeBtn");
   if (city) city.disabled = !!addressLocked;
   if (street) street.disabled = !!addressLocked;
   if (house) house.disabled = !!addressLocked;
-  if (type) type.disabled = !!addressLocked;
+  if (typeBtn) typeBtn.disabled = !!addressLocked;
 }
 
 function setMarkerModalTitle(mode) {
@@ -1471,6 +1501,97 @@ function setMarkerModalTitle(mode) {
       : "Bökés helyén jön létre, utána húzással finomítható.";
   }
 }
+
+// v5.50: szép, táblázatos választó Típus/Állapot mezőkhöz
+function getLabelForType(id){
+  const n = Number(id);
+  const rec = _formTypes.find(x => Number(x.id) === n);
+  return rec ? String(rec.type || '').trim() : '';
+}
+function getLabelForStatus(id){
+  const n = Number(id);
+  const rec = _formStatuses.find(x => Number(x.id) === n);
+  return rec ? String(rec.status || '').trim() : '';
+}
+
+function setPickerValue(kind, id){
+  const hid = document.getElementById(kind === 'type' ? 'fType' : 'fStatus');
+  const txt = document.getElementById(kind === 'type' ? 'fTypeBtnText' : 'fStatusBtnText');
+  if (!hid || !txt) return;
+  if (!id) {
+    hid.value = '';
+    txt.textContent = 'Válassz...';
+    return;
+  }
+  hid.value = String(id);
+  txt.textContent = kind === 'type' ? getLabelForType(id) : getLabelForStatus(id);
+}
+
+function openPickPanel(kind, anchorBtn){
+  const panel = document.getElementById('cmPickPanel');
+  if (!panel || !anchorBtn) return;
+
+  const data = (kind === 'type') ? (_formTypes || []) : (_formStatuses || []);
+  const selectedId = String(document.getElementById(kind === 'type' ? 'fType' : 'fStatus')?.value || '');
+
+  const title = kind === 'type' ? 'Típus választása' : 'Állapot választása';
+  const nameKey = kind === 'type' ? 'type' : 'status';
+
+  const rows = data.map(r => {
+    const id = String(r.id);
+    const name = String(r[nameKey] || '').trim();
+    const internalId = String(r.internalId || '').trim();
+    const desc = String(r.description || '').trim();
+    const sel = (id && id === selectedId) ? ' data-selected="1"' : '';
+    return `<tr data-id="${escapeHtml(id)}"${sel}>
+      <td class="col-name">${escapeHtml(name)}</td>
+      <td class="col-int">${escapeHtml(internalId)}</td>
+      <td class="col-desc">${escapeHtml(desc)}</td>
+    </tr>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="pick-head">
+      <div class="pick-title">${escapeHtml(title)}</div>
+      <button type="button" class="pick-close" aria-label="Bezárás">×</button>
+    </div>
+    <table>
+      <thead><tr><th>${kind==='type'?'Típus':'Állapot'}</th><th>Saját az.</th><th>Leírás</th></tr></thead>
+      <tbody>${rows || ''}</tbody>
+    </table>
+  `;
+
+  const rect = anchorBtn.getBoundingClientRect();
+  const maxW = Math.min(760, window.innerWidth - 20);
+  const width = Math.max(320, Math.min(maxW, rect.width * 1.25));
+  panel.style.width = width + 'px';
+  panel.style.left = Math.min(window.innerWidth - width - 10, Math.max(10, rect.left)) + 'px';
+  panel.style.top = Math.min(window.innerHeight - 240, rect.bottom + 8) + 'px';
+  panel.style.display = 'block';
+
+  const close = () => { panel.style.display = 'none'; };
+  panel.querySelector('.pick-close')?.addEventListener('click', (e) => { e.preventDefault(); close(); });
+
+  const onDoc = (ev) => {
+    if (!panel.contains(ev.target) && ev.target !== anchorBtn) {
+      document.removeEventListener('mousedown', onDoc, true);
+      document.removeEventListener('touchstart', onDoc, true);
+      close();
+    }
+  };
+  document.addEventListener('mousedown', onDoc, true);
+  document.addEventListener('touchstart', onDoc, true);
+
+  panel.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = tr.getAttribute('data-id');
+      setPickerValue(kind, id);
+      close();
+    });
+  });
+}
+
 
 async function openEditModal(marker) {
   markerModalMode = "edit";
@@ -1488,45 +1609,14 @@ async function openEditModal(marker) {
   document.getElementById("fHouse").value = parts[2] || "";
 
   // Típus (nem módosítható)
-  const typeSel = document.getElementById("fType");
-  if (typeSel) {
-    // v5.49: ID alapú mentés (typeId), ha hiányzik az opció, hozzunk létre ideigleneset
-    if (marker.typeId) {
-      const wanted = String(marker.typeId);
-      const exists = Array.from(typeSel.options).some(o => o.value === wanted);
-      if (!exists) {
-        const o = document.createElement('option');
-        o.value = wanted;
-        o.textContent = String(marker.typeLabel || 'Ismeretlen típus');
-        o.dataset.internalId = String(marker.typeInternalId || marker.type || '');
-        typeSel.appendChild(o);
-      }
-      typeSel.value = wanted;
-    } else if (marker.type) {
-      const opt = Array.from(typeSel.options).find(o => (o.dataset.internalId || "") === String(marker.type));
-      if (opt) typeSel.value = opt.value;
-    }
-  }
+  setPickerValue('type', marker.typeId || null);
+  const typeBtn = document.getElementById('fTypeBtn');
+  if (typeBtn) typeBtn.disabled = true;
 
   // Állapot + megjegyzés (módosítható)
-  const statusSel = document.getElementById("fStatus");
-  if (statusSel) {
-    if (marker.statusId) {
-      const wanted = String(marker.statusId);
-      const exists = Array.from(statusSel.options).some(o => o.value === wanted);
-      if (!exists) {
-        const o = document.createElement('option');
-        o.value = wanted;
-        o.textContent = String(marker.statusLabel || 'Ismeretlen állapot');
-        o.dataset.internalId = String(marker.statusInternalId || marker.status || '');
-        statusSel.appendChild(o);
-      }
-      statusSel.value = wanted;
-    } else if (marker.status) {
-      const opt = Array.from(statusSel.options).find(o => (o.dataset.internalId || "") === String(marker.status));
-      if (opt) statusSel.value = opt.value;
-    }
-  }
+  setPickerValue('status', marker.statusId || null);
+  const statusBtn = document.getElementById('fStatusBtn');
+  if (statusBtn) statusBtn.disabled = false;
   document.getElementById("fNotes").value = marker.notes || "";
 
   // Fotók hozzáadás: a marker UUID-hoz kötjük
@@ -1545,68 +1635,31 @@ async function loadMarkers() {
 }
 
 async function fillLookups() {
-  // v5.49: Felvitel/szerkesztés a Beállításokban tárolt típusok/állapotok alapján (nincs automatikus feltöltés)
+  // v5.50: Felvitel/szerkesztés a Beállításokban tárolt típusok/állapotok alapján
   const types = await DB.getAllObjectTypes().catch(() => []) || [];
   const statuses = await DB.getAllObjectStatuses().catch(() => []) || [];
 
-  // cache a marker színekhez
+  _formTypes = types;
+  _formStatuses = statuses;
+
+  // cache a marker színekhez (typeId -> color)
   try { setTypeMetaCache(types); } catch (_) {}
 
-  const typeSel = document.getElementById("fType");
-  typeSel.innerHTML = "";
-  // Placeholder (nincs default kiválasztás)
-  {
-    const o = document.createElement("option");
-    o.value = "";
-    o.textContent = "Válassz...";
-    o.disabled = true;
-    o.selected = true;
-    typeSel.appendChild(o);
-  }
-  types.forEach(t => {
-    const o = document.createElement("option");
-    o.value = String(t.id);
-    const internal = String(t.internalId || "").trim();
-    const desc = String(t.description || "").trim();
-    const label = String(t.type || "").trim();
-    o.textContent = label + (internal ? ` | ${internal}` : "") + (desc ? ` | ${desc}` : "");
-    o.dataset.internalId = internal;
-    o.dataset.description = desc;
-    typeSel.appendChild(o);
-  });
-
-  const statusSel = document.getElementById("fStatus");
-  statusSel.innerHTML = "";
-  {
-    const o = document.createElement("option");
-    o.value = "";
-    o.textContent = "Válassz...";
-    o.disabled = true;
-    o.selected = true;
-    statusSel.appendChild(o);
-  }
-  statuses.forEach(s => {
-    const o = document.createElement("option");
-    o.value = String(s.id);
-    const internal = String(s.internalId || "").trim();
-    const desc = String(s.description || "").trim();
-    const label = String(s.status || "").trim();
-    o.textContent = label + (internal ? ` | ${internal}` : "") + (desc ? ` | ${desc}` : "");
-    o.dataset.internalId = internal;
-    o.dataset.description = desc;
-    statusSel.appendChild(o);
-  });
+  // alapértékek (nincs default kiválasztás)
+  setPickerValue('type', null);
+  setPickerValue('status', null);
 }
+
 
 async function saveMarker() {
   // EDIT mód
   if (markerModalMode === "edit") {
     if (!editingMarkerId) return;
-    const statusSel = document.getElementById("fStatus");
     const notes = document.getElementById("fNotes").value.trim();
-    const statusId = statusSel ? Number(statusSel.value) : null;
-    const statusLabel = statusSel ? (statusSel.options[statusSel.selectedIndex]?.textContent || "") : "";
-    const statusInternalId = statusSel ? (statusSel.options[statusSel.selectedIndex]?.dataset?.internalId || "") : "";
+    const statusId = Number(document.getElementById("fStatus")?.value || NaN);
+    const sRec = _formStatuses.find(x => Number(x.id) === statusId) || null;
+    const statusLabel = sRec ? String(sRec.status || '').trim() : '';
+    const statusInternalId = sRec ? String(sRec.internalId || '').trim() : '';
 
     await DB.updateMarker(editingMarkerId, {
       statusId: Number.isFinite(statusId) ? statusId : null,
@@ -1642,12 +1695,9 @@ async function saveMarker() {
     return;
   }
 
-  const typeSel = document.getElementById("fType");
-  const statusSel = document.getElementById("fStatus");
-
   const uuid = currentDraftUuid || genUuid();
-  const typeId = Number(typeSel?.value);
-  const statusId = Number(statusSel?.value);
+  const typeId = Number(document.getElementById("fType")?.value || NaN);
+  const statusId = Number(document.getElementById("fStatus")?.value || NaN);
 
   if (!Number.isFinite(typeId)) {
     alert('A Típus kiválasztása kötelező.');
@@ -1657,10 +1707,12 @@ async function saveMarker() {
     alert('Az Állapot kiválasztása kötelező.');
     return;
   }
-  const typeOpt = typeSel && typeSel.selectedIndex >= 0 ? typeSel.options[typeSel.selectedIndex] : null;
-  const statusOpt = statusSel && statusSel.selectedIndex >= 0 ? statusSel.options[statusSel.selectedIndex] : null;
-  const typeInternalId = typeOpt ? (typeOpt.dataset?.internalId || "") : "";
-  const statusInternalId = statusOpt ? (statusOpt.dataset?.internalId || "") : "";
+  const tRec = _formTypes.find(x => Number(x.id) === typeId) || null;
+  const sRec = _formStatuses.find(x => Number(x.id) === statusId) || null;
+  const typeInternalId = tRec ? String(tRec.internalId || '').trim() : '';
+  const statusInternalId = sRec ? String(sRec.internalId || '').trim() : '';
+  const typeLabel = tRec ? String(tRec.type || '').trim() : '';
+  const statusLabel = sRec ? String(sRec.status || '').trim() : '';
   const marker = {
     lat: pendingLatLng.lat,
     lng: pendingLatLng.lng,
@@ -1673,8 +1725,8 @@ async function saveMarker() {
     status: String(statusInternalId || ""),
     typeInternalId: String(typeInternalId || ""),
     statusInternalId: String(statusInternalId || ""),
-    typeLabel: String(typeOpt?.textContent || ""),
-    statusLabel: String(statusOpt?.textContent || ""),
+    typeLabel: String(typeLabel || ''),
+    statusLabel: String(statusLabel || ''),
     notes: document.getElementById("fNotes").value.trim(),
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -1756,6 +1808,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   await DB.cleanInvalidPhotos();
 
   await fillLookups();
+  // v5.50: Táblázatos Típus/Állapot választó
+  const fTypeBtn = document.getElementById('fTypeBtn');
+  if (fTypeBtn) fTypeBtn.addEventListener('click', (e) => { e.preventDefault(); if (!fTypeBtn.disabled) openPickPanel('type', fTypeBtn); });
+  const fStatusBtn = document.getElementById('fStatusBtn');
+  if (fStatusBtn) fStatusBtn.addEventListener('click', (e) => { e.preventDefault(); if (!fStatusBtn.disabled) openPickPanel('status', fStatusBtn); });
+
 
   document.getElementById("btnCancel").addEventListener("click", closeModal);
   document.getElementById("btnSave").addEventListener("click", saveMarker);
@@ -3507,11 +3565,16 @@ async function saveObjectTypeRow(tr) {
     updatedAt: Date.now()
   });
   tr.dataset.dirty = "0";
+  // v5.50: színváltozás azonnal hasson a markerekre
+  try { _objectTypesCache = await DB.getAllObjectTypes(); setTypeMetaCache(_objectTypesCache); } catch (_) {}
+  refreshAllMarkerIcons();
 }
 
 async function loadAndRenderObjectTypes(opts = {}) {
   await DB.init();
   _objectTypesCache = await DB.getAllObjectTypes();
+  try { setTypeMetaCache(_objectTypesCache); } catch (_) {}
+  refreshAllMarkerIcons();
   renderObjectTypesTable();
   if (opts.focusId) {
     const row = document.querySelector(`#objectTypesTbody tr[data-ot-id='${opts.focusId}'] input[data-field='type']`);
@@ -3696,6 +3759,9 @@ async function saveObjectStatusRow(tr) {
     updatedAt: Date.now(),
   });
   tr.dataset.dirty = "0";
+  // v5.50: színváltozás azonnal hasson a markerekre
+  try { _objectTypesCache = await DB.getAllObjectTypes(); setTypeMetaCache(_objectTypesCache); } catch (_) {}
+  refreshAllMarkerIcons();
 }
 
 async function loadAndRenderObjectStatuses(opts = {}) {

@@ -748,6 +748,35 @@
 @media (max-width: 640px){
   .myloc-fab{ bottom: 72px; } /* mobilon feljebb, hogy ne takarja a böngésző UI */
 }
+
+
+    /* CM_PICKER_STYLES */
+    .pick-wrap{ position:relative; }
+    .pick-btn{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:12px 14px; border:1px solid #d1d5db; border-radius:14px; background:#fff; cursor:pointer;
+      font: 600 16px system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .pick-btn:disabled{ opacity:.6; cursor:not-allowed; }
+    .pick-btn-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pick-caret{ opacity:.75; }
+
+    .pick-panel{ position:fixed; z-index:5000; background:rgba(255,255,255,.98); border:1px solid rgba(0,0,0,.12);
+      border-radius:14px; box-shadow:0 18px 40px rgba(0,0,0,.25); overflow:hidden; }
+    .pick-panel .pick-head{ padding:10px 12px; border-bottom:1px solid rgba(0,0,0,.08); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .pick-panel .pick-title{ font-weight:800; }
+    .pick-panel .pick-close{ border:0; background:transparent; font-size:22px; line-height:1; cursor:pointer; padding:0 6px; }
+    .pick-panel table{ border-collapse:collapse; width:100%; font-size:14px; }
+    .pick-panel th, .pick-panel td{ padding:10px 12px; border-bottom:1px solid rgba(0,0,0,.06); text-align:left; vertical-align:top; }
+    .pick-panel th{ font-size:12px; text-transform:uppercase; letter-spacing:.04em; opacity:.7; }
+    .pick-panel tr{ cursor:pointer; }
+    .pick-panel tr:hover{ background:rgba(0,0,0,.04); }
+    .pick-panel tr[data-selected="1"]{ background:rgba(44,123,229,.10); }
+    .pick-panel td.col-name{ font-weight:700; }
+    .pick-panel td.col-int{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; opacity:.85; }
+    .pick-panel td.col-desc{ opacity:.8; }
+
+    @media (max-width:640px){
+      .pick-panel{ left:10px !important; right:10px !important; width:auto !important; }
+    }
 </style>
 </head>
 
@@ -871,11 +900,23 @@
       <div class="row">
         <div style="flex:1">
           <label>Típus</label>
-          <select id="fType"></select>
+          <div class="pick-wrap">
+            <button type="button" class="pick-btn" id="fTypeBtn" aria-label="Típus választása">
+              <span class="pick-btn-text" id="fTypeBtnText">Válassz...</span>
+              <span class="pick-caret" aria-hidden="true">▾</span>
+            </button>
+            <input type="hidden" id="fType" value="" />
+          </div>
         </div>
         <div style="flex:1">
           <label>Állapot</label>
-          <select id="fStatus"></select>
+          <div class="pick-wrap">
+            <button type="button" class="pick-btn" id="fStatusBtn" aria-label="Állapot választása">
+              <span class="pick-btn-text" id="fStatusBtnText">Válassz...</span>
+              <span class="pick-caret" aria-hidden="true">▾</span>
+            </button>
+            <input type="hidden" id="fStatus" value="" />
+          </div>
         </div>
       </div>
 
@@ -1052,5 +1093,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="db.js"></script>
   <script src="app.js"></script>
+  <div id="cmPickPanel" class="pick-panel" style="display:none"></div>
 </body>
 </html>

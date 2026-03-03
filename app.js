@@ -1,4 +1,20 @@
-const APP_VERSION = "5.39.2";
+const APP_VERSION = "5.40";
+
+let CURRENT_USER = { username: "admin", role: "admin" };
+
+function setCurrentUserLocal(u) {
+  CURRENT_USER = { username: String(u?.username || "admin"), role: String(u?.role || "felvivo") };
+  updateCurrentUserChip();
+}
+
+function updateCurrentUserChip() {
+  const el = document.getElementById("currentUserChip");
+  if (!el) return;
+  const name = CURRENT_USER?.username || "-";
+  const role = CURRENT_USER?.role || "";
+  el.textContent = role ? `${name} (${role})` : name;
+}
+
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -710,7 +726,7 @@ function wirePopupDelete(marker, dbId) {
       );
       if (!ok) return;
 
-      await DB.softDeleteMarker(dbId);
+      await DB.softDeleteMarker(dbId, { deletedBy: CURRENT_USER.username, updatedBy: CURRENT_USER.username });
       map.removeLayer(marker);
       markerLayers.delete(dbId);
 
@@ -784,7 +800,8 @@ mk.__data = m;
 
   mk.on("dragend", async (e) => {
     const p = e.target.getLatLng();
-    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng, updatedAt: Date.now() });
+    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng, updatedAt: Date.now(),
+      updatedBy: CURRENT_USER.username });
 
     const updated = await getMarker(m.id);
     if (updated) mk.setPopupContent(popupHtml(updated));
@@ -941,8 +958,11 @@ async function saveMarker() {
     statusLabel: statusSel.options[statusSel.selectedIndex]?.textContent || statusSel.value,
     notes: document.getElementById("fNotes").value.trim(),
     createdAt: Date.now(),
+    createdBy: CURRENT_USER.username,
     updatedAt: Date.now(),
+    updatedBy: CURRENT_USER.username,
     deletedAt: null,
+    deletedBy: null,
     uuid
   };
 
@@ -999,6 +1019,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }).addTo(map);
 
   await DB.init();
+
+  // Active user (v5.40)
+  setCurrentUserLocal(await DB.ensureDefaultUser());
 
   // DB migrations / safety cleanups (uuid backfill, invalid photo rows)
   await DB.backfillMarkerMeta();
@@ -1987,8 +2010,8 @@ function setSettingsPage(page) {
     renderSettingsPlaceholderPage();
   } else if (page === "users") {
     titleEl.textContent = "Felhasználó kezelés";
-    hintEl.textContent = "Itt később a felhasználók kezelése (jogosultságok, admin, felvivő stb.) lesz elérhető.";
-    renderSettingsPlaceholderPage();
+    hintEl.textContent = "Felhasználók és aktív felhasználó kiválasztása (helyi / IndexedDB).";
+    renderSettingsUsersPage();
   } else {
     titleEl.textContent = "Objektum típusa";
     hintEl.textContent = "Típusok kezelése (helyi adatbázis / IndexedDB).";
@@ -2380,6 +2403,129 @@ function renderSettingsPlaceholderPage() {
   const container = document.getElementById("settingsExtra");
   if (!container) return;
   container.innerHTML = "";
+
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+
+async function renderSettingsUsersPage() {
+  const container = document.getElementById("settingsExtra");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const users = await DB.getAllUsers();
+  const cur = await DB.getCurrentUser();
+  const curName = cur?.username || "";
+
+  const wrap = document.createElement("div");
+  wrap.style.display = "grid";
+  wrap.style.gap = "12px";
+
+  const top = document.createElement("div");
+  top.innerHTML = `
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div style="font-weight:800;">Aktív felhasználó:</div>
+      <div style="padding:6px 10px; border-radius:12px; background:#eef2f7; font-weight:800;">
+        ${escapeHtml(curName || "-")}
+      </div>
+      <button class="btn btn-ghost" id="btnUsersReload" type="button">Frissítés</button>
+    </div>
+  `;
+  wrap.appendChild(top);
+
+  const list = document.createElement("div");
+  list.innerHTML = `
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;">Név</th>
+          <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;">Szerep</th>
+          <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;">Művelet</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(users || []).map(u => `
+          <tr>
+            <td style="padding:8px; border-bottom:1px solid #f1f5f9; font-weight:800;">${escapeHtml(u.username)}</td>
+            <td style="padding:8px; border-bottom:1px solid #f1f5f9;">${escapeHtml(u.role || "felvivo")}</td>
+            <td style="padding:8px; border-bottom:1px solid #f1f5f9; display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-user-set" data-user="${escapeHtml(u.username)}" type="button">Aktív</button>
+              <button class="btn btn-ghost btn-user-del" data-user="${escapeHtml(u.username)}" type="button" ${u.username===curName ? "disabled" : ""}>Törlés</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+  wrap.appendChild(list);
+
+  const add = document.createElement("div");
+  add.innerHTML = `
+    <div style="border-top:1px solid #e5e7eb; padding-top:12px; display:grid; gap:10px;">
+      <div style="font-weight:800;">Új / módosítás</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input id="uName" placeholder="felhasználónév" style="padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb; min-width: 180px;" />
+        <select id="uRole" style="padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb;">
+          <option value="admin">admin</option>
+          <option value="felvivo">felvivő</option>
+        </select>
+        <button class="btn btn-add" id="btnUserSave" type="button">Mentés</button>
+      </div>
+      <div class="small" style="color:#6b7280;">
+        Megjegyzés: ez még helyi (IndexedDB) felhasználólista. Később online auth váltja.
+      </div>
+    </div>
+  `;
+  wrap.appendChild(add);
+
+  container.appendChild(wrap);
+
+  // wire events
+  const reload = document.getElementById("btnUsersReload");
+  if (reload) reload.onclick = () => renderSettingsUsersPage();
+
+  container.querySelectorAll(".btn-user-set").forEach((b) => {
+    b.addEventListener("click", async (ev) => {
+      const u = ev.currentTarget?.dataset?.user;
+      if (!u) return;
+      await DB.setCurrentUser(u);
+      setCurrentUserLocal(await DB.ensureDefaultUser());
+      showHint("Aktív felhasználó beállítva: " + u);
+      renderSettingsUsersPage();
+    });
+  });
+
+  container.querySelectorAll(".btn-user-del").forEach((b) => {
+    b.addEventListener("click", async (ev) => {
+      const u = ev.currentTarget?.dataset?.user;
+      if (!u) return;
+      if (u === curName) return;
+      const ok = confirm("Biztosan törlöd a felhasználót: " + u + " ?");
+      if (!ok) return;
+      await DB.deleteUser(u);
+      // if list becomes empty, re-create admin
+      setCurrentUserLocal(await DB.ensureDefaultUser());
+      showHint("Felhasználó törölve.");
+      renderSettingsUsersPage();
+    });
+  });
+
+  const saveBtn = document.getElementById("btnUserSave");
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      const name = (document.getElementById("uName")?.value || "").trim();
+      const role = (document.getElementById("uRole")?.value || "felvivo").trim();
+      if (!name) { alert("A felhasználónév kötelező."); return; }
+      await DB.upsertUser({ username: name, role });
+      showHint("Felhasználó mentve.");
+      (document.getElementById("uName")).value = "";
+      renderSettingsUsersPage();
+    };
+  }
+}
 }
 
 function renderSettingsObjectTypesPage() {

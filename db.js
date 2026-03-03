@@ -75,21 +75,40 @@ const DB = {
         { code: "BALESET", label: "Balesetveszélyes" }
       ]);
     }
+
+
+// Ensure there is at least one user and an active user selected (v5.40)
+await this.ensureDefaultUser();
   },
 
   async backfillMarkerMeta() {
-    const all = await this.getAllMarkers();
-    const now = Date.now();
-    for (const m of all) {
-      let changed = false;
-      const patch = {};
-      if (!m.uuid) { patch.uuid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(now) + "-" + String(Math.random()).replace(".", "")); changed = true; }
-      if (!m.createdAt) { patch.createdAt = now; changed = true; }
-      if (!m.updatedAt) { patch.updatedAt = m.createdAt || now; changed = true; }
-      if (typeof m.deletedAt === "undefined") { patch.deletedAt = null; changed = true; }
-      if (changed) await this.updateMarker(m.id, patch);
+  const all = await this.getAllMarkers();
+  const now = Date.now();
+  for (const m of all) {
+    let changed = false;
+    const patch = {};
+
+    // always have a stable uuid for photo linking + future sync
+    if (!m.uuid) {
+      patch.uuid = (crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : (String(now) + "-" + String(Math.random()).replace(".", ""));
+      changed = true;
     }
-  },
+
+    // timestamps
+    if (!m.createdAt) { patch.createdAt = now; changed = true; }
+    if (!m.updatedAt) { patch.updatedAt = m.createdAt || now; changed = true; }
+    if (typeof m.deletedAt === "undefined") { patch.deletedAt = null; changed = true; }
+
+    // audit fields (v5.40) – best-effort backfill
+    if (typeof m.createdBy === "undefined") { patch.createdBy = "unknown"; changed = true; }
+    if (typeof m.updatedBy === "undefined") { patch.updatedBy = "unknown"; changed = true; }
+    if (typeof m.deletedBy === "undefined") { patch.deletedBy = null; changed = true; }
+
+    if (changed) await this.updateMarker(m.id, patch);
+  }
+},
 
 
   _store(name, mode) {
@@ -257,7 +276,7 @@ const DB = {
   },
 
   // Soft delete (online sync-hoz barátságosabb)
-  softDeleteMarker(id) {
+  softDeleteMarker(id, audit = {}) {
     return new Promise((resolve, reject) => {
       const s = this._store("markers", "readwrite");
       const g = s.get(id);
@@ -265,7 +284,7 @@ const DB = {
         const cur = g.result;
         if (!cur) return resolve(false);
         const now = Date.now();
-        const put = s.put({ ...cur, deletedAt: now, updatedAt: now });
+        const put = s.put({ ...cur, deletedAt: now, updatedAt: now, ...audit });
         put.onsuccess = () => resolve(true);
         put.onerror = () => reject(put.error);
       };
@@ -346,4 +365,94 @@ const DB = {
       r.onerror = () => reject(r.error);
     });
   }
+// ---------------------------
+// Felhasználók (v5.40)
+// - helyi (IndexedDB) users store
+// - aktív felhasználó: lookups["currentUser"] -> { username }
+// ---------------------------
+
+getAllUsers() {
+  return new Promise((resolve, reject) => {
+    const s = this._store("users", "readonly");
+    const req = s.openCursor();
+    const out = [];
+    req.onsuccess = (ev) => {
+      const cur = ev.target.result;
+      if (!cur) {
+        out.sort((a, b) => String(a.username).localeCompare(String(b.username), "hu"));
+        return resolve(out);
+      }
+      out.push({ ...cur.value });
+      cur.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+},
+
+getUser(username) {
+  return new Promise((resolve, reject) => {
+    const s = this._store("users", "readonly");
+    const r = s.get(String(username || "").trim());
+    r.onsuccess = () => resolve(r.result || null);
+    r.onerror = () => reject(r.error);
+  });
+},
+
+upsertUser(user) {
+  return new Promise((resolve, reject) => {
+    const u = {
+      username: String(user?.username || "").trim(),
+      role: String(user?.role || "felvivo").trim(),
+      createdAt: user?.createdAt || Date.now()
+    };
+    if (!u.username) return resolve(false);
+    const s = this._store("users", "readwrite");
+    const r = s.put(u);
+    r.onsuccess = () => resolve(true);
+    r.onerror = () => reject(r.error);
+  });
+},
+
+deleteUser(username) {
+  return new Promise((resolve, reject) => {
+    const s = this._store("users", "readwrite");
+    const r = s.delete(String(username || "").trim());
+    r.onsuccess = () => resolve(true);
+    r.onerror = () => reject(r.error);
+  });
+},
+
+async getCurrentUser() {
+  const cur = await this.getLookup("currentUser");
+  if (cur && cur.username) return cur;
+  return null;
+},
+
+async setCurrentUser(username) {
+  const u = String(username || "").trim();
+  if (!u) return false;
+  await this.setLookup("currentUser", { username: u });
+  return true;
+},
+
+/**
+ * Ensure at least one user exists and a current user is selected.
+ * Returns { username, role } (best-effort).
+ */
+async ensureDefaultUser() {
+  const users = await this.getAllUsers();
+  if (!users || users.length === 0) {
+    await this.upsertUser({ username: "admin", role: "admin" });
+  }
+  let cur = await this.getCurrentUser();
+  if (!cur || !cur.username) {
+    const all = await this.getAllUsers();
+    const first = all && all[0] ? all[0].username : "admin";
+    await this.setCurrentUser(first);
+    cur = { username: first };
+  }
+  const rec = await this.getUser(cur.username);
+  return { username: cur.username, role: rec?.role || "felvivo" };
+},
+
 };

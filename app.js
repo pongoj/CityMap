@@ -1,4 +1,4 @@
-const APP_VERSION = "5.42.4";
+const APP_VERSION = "5.43";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -38,7 +38,11 @@ function getPhotoCountCached(uuid){
 
 
 // v5.15: térképi megjelenítés szűrése (csak kijelöltek / táblázat tartalma)
-let activeMapFilterIds = null; // null = nincs térképi szűrés, minden aktív marker látszik
+let activeMapFilterIds = null;
+
+// Marker mozgatás mód (popup gomb → következő kattintás helye)
+let moveModeMarkerId = null;
+ // null = nincs térképi szűrés, minden aktív marker látszik
 
 let map;
 let pendingLatLng = null;
@@ -1231,8 +1235,9 @@ function idText(id) {
 }
 
 function popupHtml(m) {
+  const isDeleted = !!m.deletedAt;
   return `
-  <div style="min-width:220px">
+  <div class="cm-popup" style="min-width:240px">
     <div><b>Azonosítószám:</b> ${idText(m.id)}</div>
     <div><b>Cím:</b> ${escapeHtml(m.address)}</div>
     <div><b>Típus:</b> ${escapeHtml(m.typeLabel)}</div>
@@ -1241,14 +1246,13 @@ function popupHtml(m) {
 
     <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btnPhotos" data-uuid="${m.uuid}" data-title="${idText(m.id)}">Fotók (<span id="pc-${m.uuid}">…</span>)</button>
-      ${m.deletedAt ? '<span style="color:#b91c1c;font-weight:700;">TÖRÖLT</span>' : ''}
+      ${isDeleted ? '<span style="color:#b91c1c;font-weight:700;">TÖRÖLT</span>' : ''}
     </div>
 
-    <div style="margin-top:10px;display:flex;justify-content:flex-end">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-        <button data-edit="${m.id}">Objektum módosítása</button>
-        <button data-del="${m.id}">Törlés</button>
-      </div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+      <button data-edit="${m.id}" ${isDeleted ? 'disabled title="A törölt objektum nem módosítható"' : ''}>Módosítás</button>
+      <button data-move="${m.id}" ${isDeleted ? 'disabled title="A törölt objektum nem mozgatható"' : ''}>Mozgatás</button>
+      <button data-del="${m.id}">Törlés</button>
     </div>
   </div>`;
 }
@@ -1273,6 +1277,32 @@ function wirePopupDelete(marker, dbId) {
 
       if (activeMapFilterIds instanceof Set) activeMapFilterIds.delete(Number(dbId));
       updateShowAllButtonVisibility();
+    });
+  });
+}
+
+function wirePopupMove(marker, dbId) {
+  marker.on("popupopen", (e) => {
+    const el = e.popup.getElement();
+    if (!el) return;
+    const btn = el.querySelector(`button[data-move="${dbId}"]`);
+    if (!btn) return;
+
+    btn.addEventListener("click", async () => {
+      try {
+        const m = await DB.getMarkerById(dbId);
+        if (!m || m.deletedAt) {
+          alert("A törölt marker nem mozgatható.");
+          return;
+        }
+        // Mozgatás mód: a következő térképkattintás áthelyezi a markert.
+        moveModeMarkerId = dbId;
+        showHint("Mozgatás: válaszd ki az új helyet a térképen.");
+        try { marker.closePopup(); } catch (_) {}
+      } catch (err) {
+        console.error("move from popup failed", err);
+        alert("Nem sikerült betölteni a marker adatait.");
+      }
     });
   });
 }
@@ -1332,20 +1362,13 @@ async function getMarker(id) {
 }
 
 function addMarkerToMap(m) {
-  const mk = L.marker([m.lat, m.lng], { draggable: true, icon: iconForType(m.type) }).addTo(map);
+  const mk = L.marker([m.lat, m.lng], { draggable: false, icon: iconForType(m.type) }).addTo(map);
 mk.__data = m;
   mk.bindPopup(popupHtml(m));
   wirePopupDelete(mk, m.id);
   wirePopupEdit(mk, m.id);
+  wirePopupMove(mk, m.id);
   wirePopupPhotos(mk, m);
-
-  mk.on("dragend", async (e) => {
-    const p = e.target.getLatLng();
-    await DB.updateMarker(m.id, { lat: p.lat, lng: p.lng, updatedAt: Date.now() });
-
-    const updated = await getMarker(m.id);
-    if (updated) mk.setPopupContent(popupHtml(updated));
-  });
 
   markerLayers.set(m.id, mk);
 
@@ -1666,9 +1689,104 @@ if (navBtn) {
     activeMapFilterIds = null;
     updateShowAllButtonVisibility();
   });
-  map.on("click", (e) => {
-    openModal(rotatedClickLatLng(e));
+  map.on("click", async (e) => {
+    // Ha marker mozgatás mód aktív, akkor a kattintás az új pozíció
+    if (moveModeMarkerId) {
+      const ll = rotatedClickLatLng(e);
+      const id = moveModeMarkerId;
+      moveModeMarkerId = null;
+      try {
+        await DB.updateMarker(id, { lat: ll.lat, lng: ll.lng, updatedAt: Date.now() });
+        const mk = markerLayers.get(id);
+        if (mk) {
+          mk.setLatLng([ll.lat, ll.lng]);
+          const updated = await getMarker(id);
+          if (updated) {
+            mk.__data = updated;
+            mk.setIcon(resizedIconForType(updated.type, map.getZoom()));
+            mk.setPopupContent(popupHtml(updated));
+          }
+        }
+        showHint("Objektum áthelyezve.");
+      } catch (err) {
+        console.error("move marker failed", err);
+        alert("Nem sikerült áthelyezni az objektumot.");
+      }
+      return;
+    }
   });
+
+
+  // v5.43: Új objektum felvitele csak hosszú nyomásra (nem sima kattintás)
+  (function setupLongPressAddObject(){
+    const container = map.getContainer();
+    const LONGPRESS_MS = 550;
+    const MOVE_TOL_PX = 10;
+    let timer = null;
+    let startPt = null;
+    let startEv = null;
+
+    function clear(){
+      if (timer) { clearTimeout(timer); timer = null; }
+      startPt = null;
+      startEv = null;
+    }
+
+    function getPoint(ev){
+      const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]);
+      const x = t ? t.clientX : ev.clientX;
+      const y = t ? t.clientY : ev.clientY;
+      return {x,y};
+    }
+
+    function trigger(ev){
+      if (!ev) return;
+      // Mozgatás módban a sima kattintás kezeli, longpress ne zavarjon be
+      if (moveModeMarkerId) return;
+      const latlngRaw = map.mouseEventToLatLng(ev);
+      const ll = rotatedClickLatLng({ latlng: latlngRaw, originalEvent: ev });
+      openModal(ll);
+    }
+
+    function onDown(ev){
+      // Csak bal gomb / touch
+      if (ev.type === 'mousedown' && ev.button !== 0) return;
+      startPt = getPoint(ev);
+      startEv = ev;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        try {
+          // ne legyen text selection / ghost click
+          if (startEv && startEv.preventDefault) startEv.preventDefault();
+        } catch(_){}
+        trigger(startEv);
+      }, LONGPRESS_MS);
+    }
+
+    function onMove(ev){
+      if (!startPt || !timer) return;
+      const p = getPoint(ev);
+      const dx = p.x - startPt.x;
+      const dy = p.y - startPt.y;
+      if ((dx*dx + dy*dy) > (MOVE_TOL_PX*MOVE_TOL_PX)) {
+        clear();
+      }
+    }
+
+    function onUp(){
+      clear();
+    }
+
+    container.addEventListener('mousedown', onDown, {passive:true});
+    container.addEventListener('touchstart', onDown, {passive:true});
+    container.addEventListener('mousemove', onMove, {passive:true});
+    container.addEventListener('touchmove', onMove, {passive:true});
+    container.addEventListener('mouseup', onUp, {passive:true});
+    container.addEventListener('mouseleave', onUp, {passive:true});
+    container.addEventListener('touchend', onUp, {passive:true});
+    container.addEventListener('touchcancel', onUp, {passive:true});
+  })();
   const ok = await centerToMyLocation();
   if (!ok) map.setView([47.4979, 19.0402], 15);
 

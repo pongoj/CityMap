@@ -1,12 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-opacity="0.25"/>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+    <filter id="ds" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-opacity="0.22"/>
     </filter>
   </defs>
-  <g filter="url(#shadow)">
-    <path d="M128 10 L200 170 L150 160 L150 240 L106 240 L106 160 L56 170 Z"
-          fill="#0ea5e9" stroke="#0b4a6b" stroke-width="6" stroke-linejoin="round"/>
-    <circle cx="128" cy="185" r="10" fill="#0b4a6b" opacity="0.25"/>
+
+  <!-- subtle base ring -->
+  <g filter="url(#ds)">
+    <circle cx="128" cy="146" r="44" fill="#111827" opacity="0.12"/>
+    <circle cx="128" cy="146" r="40" fill="#ffffff" opacity="0.92"/>
+
+    <!-- navigation arrow -->
+    <path d="M128 18 L202 178 L136 156 L128 246 L120 156 L54 178 Z"
+          fill="url(#g)" stroke="#0b4a6b" stroke-width="6" stroke-linejoin="round"/>
+
+    <!-- inner highlight -->
+    <path d="M128 34 L186 170 L138 154 L128 222 L118 154 L70 170 Z"
+          fill="#ffffff" opacity="0.18"/>
+
+    <!-- center dot -->
+    <circle cx="128" cy="146" r="7" fill="#0b4a6b" opacity="0.35"/>
   </g>
 </svg>

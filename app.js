@@ -1,4 +1,4 @@
-const APP_VERSION = "5.48";
+const APP_VERSION = "5.49";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -265,21 +265,56 @@ function genUuid() {
 }
 
 
-const TYPE_ICON = {
-  PAD: "green",
-  ZEBRA: "yellow",
-  TABLA: "blue",
-  DEFAULT: "grey"
-};
+// v5.49: Marker színek a Beállítások / Objektum típusa (HEX) alapján
+// typeId -> {color, internalId, type, description}
+let _typeMetaById = new Map();
+let _markerSvgUrlCache = new Map();
 
-function iconForType(type) {
+function setTypeMetaCache(types) {
+  _typeMetaById = new Map();
+  (types || []).forEach((t) => {
+    const id = Number(t.id);
+    if (!Number.isFinite(id)) return;
+    _typeMetaById.set(id, {
+      color: String(t.color || "").trim(),
+      internalId: String(t.internalId || "").trim(),
+      type: String(t.type || "").trim(),
+      description: String(t.description || "").trim(),
+    });
+  });
+}
 
-  const c = TYPE_ICON[type] || TYPE_ICON.DEFAULT;
+function markerSvgDataUrl(fillHex) {
+  const hex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(fillHex || "").trim())
+    ? String(fillHex).trim()
+    : "#6b7280";
+  const key = hex.toLowerCase();
+  if (_markerSvgUrlCache.has(key)) return _markerSvgUrlCache.get(key);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41">
+  <path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 9.4 12.5 28.5 12.5 28.5S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0z"
+    fill="${hex}" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>
+  <circle cx="12.5" cy="12.5" r="5" fill="rgba(255,255,255,0.85)"/>
+</svg>`;
+  const url = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+  _markerSvgUrlCache.set(key, url);
+  return url;
+}
+
+function iconForMarker(m, zoom) {
+  const z = Number.isFinite(Number(zoom)) ? Number(zoom) : (map && map.getZoom ? map.getZoom() : 18);
+  const scale = markerScaleForZoom(z);
+  const size = [25 * scale, 41 * scale];
+  const anchor = [12 * scale, 41 * scale];
+  const popup = [1 * scale, -34 * scale];
+
+  const meta = m && Number.isFinite(Number(m.typeId)) ? _typeMetaById.get(Number(m.typeId)) : null;
+  const color = meta && meta.color ? meta.color : "#6b7280";
+
   return new L.Icon({
-    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${c}.png`,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
+    iconUrl: markerSvgDataUrl(color),
+    iconSize: size,
+    iconAnchor: anchor,
+    popupAnchor: popup,
   });
 }
  // dbId -> leaflet marker
@@ -386,6 +421,8 @@ function openModal(latlng) {
   document.getElementById("fStreet").value = "";
   document.getElementById("fHouse").value = "";
   document.getElementById("fNotes").value = "";
+  try { const ts=document.getElementById('fType'); if (ts) ts.value=''; } catch(_){}
+  try { const ss=document.getElementById('fStatus'); if (ss) ss.value=''; } catch(_){}
 
   setMarkerModalTitle("add");
   setMarkerModalControlsDisabled({ addressLocked: false });
@@ -1393,9 +1430,7 @@ async function getMarker(id) {
   return all.find(x => x.id === id) || null;
 }
 
-function addMarkerToMap(m) {
-  const tCode = m?.typeInternalId || m?.type || "";
-  const mk = L.marker([m.lat, m.lng], { draggable: false, icon: iconForType(tCode) }).addTo(map);
+function addMarkerToMap(m) {  const mk = L.marker([m.lat, m.lng], { draggable: false, icon: iconForMarker(m, map.getZoom()) }).addTo(map);
 mk.__data = m;
   mk.bindPopup(popupHtml(m));
   wirePopupDelete(mk, m.id);
@@ -1455,9 +1490,18 @@ async function openEditModal(marker) {
   // Típus (nem módosítható)
   const typeSel = document.getElementById("fType");
   if (typeSel) {
-    // v5.48: ID alapú mentés (typeId), fallback régi mezőkre
+    // v5.49: ID alapú mentés (typeId), ha hiányzik az opció, hozzunk létre ideigleneset
     if (marker.typeId) {
-      typeSel.value = String(marker.typeId);
+      const wanted = String(marker.typeId);
+      const exists = Array.from(typeSel.options).some(o => o.value === wanted);
+      if (!exists) {
+        const o = document.createElement('option');
+        o.value = wanted;
+        o.textContent = String(marker.typeLabel || 'Ismeretlen típus');
+        o.dataset.internalId = String(marker.typeInternalId || marker.type || '');
+        typeSel.appendChild(o);
+      }
+      typeSel.value = wanted;
     } else if (marker.type) {
       const opt = Array.from(typeSel.options).find(o => (o.dataset.internalId || "") === String(marker.type));
       if (opt) typeSel.value = opt.value;
@@ -1468,7 +1512,16 @@ async function openEditModal(marker) {
   const statusSel = document.getElementById("fStatus");
   if (statusSel) {
     if (marker.statusId) {
-      statusSel.value = String(marker.statusId);
+      const wanted = String(marker.statusId);
+      const exists = Array.from(statusSel.options).some(o => o.value === wanted);
+      if (!exists) {
+        const o = document.createElement('option');
+        o.value = wanted;
+        o.textContent = String(marker.statusLabel || 'Ismeretlen állapot');
+        o.dataset.internalId = String(marker.statusInternalId || marker.status || '');
+        statusSel.appendChild(o);
+      }
+      statusSel.value = wanted;
     } else if (marker.status) {
       const opt = Array.from(statusSel.options).find(o => (o.dataset.internalId || "") === String(marker.status));
       if (opt) statusSel.value = opt.value;
@@ -1492,36 +1545,55 @@ async function loadMarkers() {
 }
 
 async function fillLookups() {
-  // v5.48: felvitel/szerkesztés a Beállításokban tárolt típusok/állapotok alapján
-  let types = await DB.getAllObjectTypes().catch(() => []) || [];
-  let statuses = await DB.getAllObjectStatuses().catch(() => []) || [];
-  // Fallback (régi beégetett lookup) – ha az admin táblák üresek
-  if (!types || types.length === 0) {
-    const base = await DB.getLookup("markerTypes") || [];
-    types = base.map((x, i) => ({ id: i + 1, internalId: x.code, type: x.label, description: "" }));
-  }
-  if (!statuses || statuses.length === 0) {
-    const base = await DB.getLookup("markerStatus") || [];
-    statuses = base.map((x, i) => ({ id: i + 1, internalId: x.code, status: x.label, description: "" }));
-  }
+  // v5.49: Felvitel/szerkesztés a Beállításokban tárolt típusok/állapotok alapján (nincs automatikus feltöltés)
+  const types = await DB.getAllObjectTypes().catch(() => []) || [];
+  const statuses = await DB.getAllObjectStatuses().catch(() => []) || [];
+
+  // cache a marker színekhez
+  try { setTypeMetaCache(types); } catch (_) {}
 
   const typeSel = document.getElementById("fType");
   typeSel.innerHTML = "";
+  // Placeholder (nincs default kiválasztás)
+  {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "Válassz...";
+    o.disabled = true;
+    o.selected = true;
+    typeSel.appendChild(o);
+  }
   types.forEach(t => {
     const o = document.createElement("option");
     o.value = String(t.id);
-    o.textContent = String(t.type || "");
-    o.dataset.internalId = String(t.internalId || "");
+    const internal = String(t.internalId || "").trim();
+    const desc = String(t.description || "").trim();
+    const label = String(t.type || "").trim();
+    o.textContent = label + (internal ? ` | ${internal}` : "") + (desc ? ` | ${desc}` : "");
+    o.dataset.internalId = internal;
+    o.dataset.description = desc;
     typeSel.appendChild(o);
   });
 
   const statusSel = document.getElementById("fStatus");
   statusSel.innerHTML = "";
+  {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "Válassz...";
+    o.disabled = true;
+    o.selected = true;
+    statusSel.appendChild(o);
+  }
   statuses.forEach(s => {
     const o = document.createElement("option");
     o.value = String(s.id);
-    o.textContent = String(s.status || "");
-    o.dataset.internalId = String(s.internalId || "");
+    const internal = String(s.internalId || "").trim();
+    const desc = String(s.description || "").trim();
+    const label = String(s.status || "").trim();
+    o.textContent = label + (internal ? ` | ${internal}` : "") + (desc ? ` | ${desc}` : "");
+    o.dataset.internalId = internal;
+    o.dataset.description = desc;
     statusSel.appendChild(o);
   });
 }
@@ -1576,6 +1648,15 @@ async function saveMarker() {
   const uuid = currentDraftUuid || genUuid();
   const typeId = Number(typeSel?.value);
   const statusId = Number(statusSel?.value);
+
+  if (!Number.isFinite(typeId)) {
+    alert('A Típus kiválasztása kötelező.');
+    return;
+  }
+  if (!Number.isFinite(statusId)) {
+    alert('Az Állapot kiválasztása kötelező.');
+    return;
+  }
   const typeOpt = typeSel && typeSel.selectedIndex >= 0 ? typeSel.options[typeSel.selectedIndex] : null;
   const statusOpt = statusSel && statusSel.selectedIndex >= 0 ? statusSel.options[statusSel.selectedIndex] : null;
   const typeInternalId = typeOpt ? (typeOpt.dataset?.internalId || "") : "";
@@ -1786,7 +1867,7 @@ if (navBtn) {
           const updated = await getMarker(id);
           if (updated) {
             mk.__data = updated;
-            mk.setIcon(resizedIconForType(updated.type, map.getZoom()));
+            mk.setIcon(resizedIconForMarker(updated, map.getZoom()));
             mk.setPopupContent(popupHtml(updated));
           }
         }
@@ -1928,7 +2009,7 @@ if (navBtn) {
   markerLayers.forEach((mk, id) => {
     const data = mk.__data;
     if (!data) return;
-    mk.setIcon(resizedIconForType(data.type, z));
+    mk.setIcon(resizedIconForMarker(data, z));
   });
 });
 
@@ -2209,22 +2290,9 @@ function markerScaleForZoom(z) {
   return 0.6;
 }
 
-function resizedIconForType(type, zoom) {
-  const base = iconForType(type);
-  const scale = markerScaleForZoom(zoom);
-  const size = [25 * scale, 41 * scale];
-  const anchor = [12 * scale, 41 * scale];
-  const popup = [1 * scale, -34 * scale];
-
-  return new L.Icon({
-    iconUrl: base.options.iconUrl,
-    iconSize: size,
-    iconAnchor: anchor,
-    popupAnchor: popup,
-  });
+function resizedIconForMarker(data, zoom) {
+  return iconForMarker(data, zoom);
 }
-
-
 
 
 function userIconForZoom(zoom) {

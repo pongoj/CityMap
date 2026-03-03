@@ -82,40 +82,7 @@ const DB = {
         { code: "BALESET", label: "Balesetveszélyes" }
       ]);
     }
-
-    // v5.47: ha az Objektum állapotok táblázat üres, töltsük fel az alap markerStatus listából
-    try {
-      const existing = await this.getAllObjectStatuses();
-      if (!existing || existing.length === 0) {
-        const base = await this.getLookup("markerStatus") || [];
-        for (const x of base) {
-          await this.addObjectStatus({
-            internalId: String(x.code || ""),
-            status: String(x.label || ""),
-            description: "",
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          });
-        }
-      }
-    } catch (_) { /* ignore */ }
-
-    // v5.48: ha az Objektum típusok táblázat üres, töltsük fel az alap markerTypes listából
-    try {
-      const existingT = await this.getAllObjectTypes();
-      if (!existingT || existingT.length === 0) {
-        const baseT = await this.getLookup("markerTypes") || [];
-        for (const x of baseT) {
-          await this.addObjectType({
-            internalId: String(x.code || ""),
-            type: String(x.label || ""),
-            description: "",
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          });
-        }
-      }
-    } catch (_) { /* ignore */ }
+    // v5.49: Objektum állapotok/típusok táblázatot NEM töltünk fel automatikusan (reset után kézi felvitel).
   },
 
   async backfillMarkerMeta() {

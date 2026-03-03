@@ -777,6 +777,32 @@
     @media (max-width:640px){
       .pick-panel{ left:10px !important; right:10px !important; width:auto !important; }
     }
+
+
+    /* v5.51: heading-up módban a térképet forgatjuk, de a marker ikonok és popupok maradjanak olvashatóan "északi" tájolásúak.
+       Ehhez a belső elemeket ellen-rotáljuk egy CSS változóval. */
+    :root{ --cm-upright-rot: 0deg; }
+    .cm-marker-wrap{ background: transparent; border: 0; }
+    .cm-marker-wrap .cm-marker-img{
+      width:100%; height:100%;
+      transform: rotate(var(--cm-upright-rot));
+      transform-origin: 50% 50%;
+      display:block;
+    }
+
+    /* Popup ellen-rotálás (a Leaflet pozicionáló transformját nem bántjuk, csak a belső dobozt forgatjuk vissza) */
+    .leaflet-popup-content-wrapper{
+      transform: rotate(var(--cm-upright-rot));
+      transform-origin: 50% 100%;
+    }
+    .leaflet-popup-tip-container{
+      transform: rotate(var(--cm-upright-rot));
+      transform-origin: 50% 0%;
+    }
+    .leaflet-popup-close-button{
+      transform: rotate(var(--cm-upright-rot));
+      transform-origin: 50% 50%;
+    }
 </style>
 </head>
 

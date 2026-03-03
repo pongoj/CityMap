@@ -1,4 +1,4 @@
-const APP_VERSION = "5.44";
+const APP_VERSION = "5.45";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -457,6 +457,35 @@ function navYOffsetPx() {
     return clamp(px, 60, 160);
   } catch (_) {
     return 90;
+  }
+}
+
+
+// v5.45 – "Középre" gomb láthatóság (Google Maps-szerű)
+// Csak akkor jelenjen meg, ha a térkép el van mozdítva, és a saját hely nincs középen.
+function updateMyLocFabVisibility() {
+  const btn = document.getElementById("btnMyLocFab");
+  if (!btn || !map) return;
+
+  if (!lastMyLocation) {
+    btn.style.display = "none";
+    return;
+  }
+
+  try {
+    const p = map.latLngToContainerPoint([lastMyLocation.lat, lastMyLocation.lng]);
+    const s = map.getSize();
+    const cx = s.x / 2, cy = s.y / 2;
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const dist = Math.hypot(dx, dy);
+
+    // 28px ~ kb. "középen van" tolerancia
+    const THRESH_PX = 28;
+    const show = dist > THRESH_PX;
+    btn.style.display = show ? "inline-flex" : "none";
+  } catch (_) {
+    btn.style.display = "none";
   }
 }
 
@@ -1106,6 +1135,9 @@ if (navMode === "heading" && isFinite(speed) && speed >= 0.8 && isFinite(lastHea
 	}
         }
       }
+
+      // v5.45: 'Középre' gomb frissítése
+      updateMyLocFabVisibility();
     },
     (err) => {
       console.warn("watchPosition error", err);
@@ -1589,6 +1621,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // A "Saját helyem" gomb visszakapcsolja.
   map.on("dragstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
   map.on("zoomstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
+  map.on("moveend", () => updateMyLocFabVisibility());
+  map.on("zoomend", () => updateMyLocFabVisibility());
+
 
   await DB.init();
 
@@ -1627,18 +1662,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       await updateAttachPhotoLabel();
     });
   }
-  document.getElementById("btnMyLoc").addEventListener("click", async () => {
-    // v5.42.2: indítsuk az iránytűt (Androidon általában prompt nélkül működik)
+  const btnMyLocFab = document.getElementById("btnMyLocFab");
+if (btnMyLocFab) {
+  btnMyLocFab.addEventListener("click", async () => {
+    // Saját hely középre (Google Maps-szerű gomb)
     try { await requestCompassPermissionIfNeeded(); } catch (_) {}
     startCompassIfPossible();
+    myLocFollowEnabled = true;
+
     const ok = await centerToMyLocation();
-    if (!ok)
+    if (!ok) {
       alert(
-        "Nem sikerült lekérni a pozíciót.\n\n" +
-          "Ellenőrizd, hogy a böngészőben engedélyezve van-e a helymeghatározás (lakatszimbólum a címsorban), " +
-          "és hogy van-e GPS/jel."
+        "Nem sikerült lekérni a pozíciót.
+
+" +
+        "Ellenőrizd, hogy engedélyezve van-e a helymeghatározás, és hogy van-e GPS/jel."
       );
+    }
+    updateMyLocFabVisibility();
   });
+}
+
 
   
 

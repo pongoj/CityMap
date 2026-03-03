@@ -1,4 +1,4 @@
-const APP_VERSION = "5.42.3";
+const APP_VERSION = "5.42.4";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -618,6 +618,26 @@ let _compassPermGranted = false;
 let _compassLastTs = 0;
 let _compassOutlierStreak = 0;
 
+// v5.42.4: kompasz + giroszkóp fúzió (remegés/ugrálás jelentős csökkentése)
+let gyroHeadingDeg = NaN;   // integrált yaw (deg)
+let fusedHeadingDeg = NaN;  // a ténylegesen használt heading
+let _motionLastTs = 0;
+let _gyroAvailable = false;
+let _motionInited = false;
+
+// v5.42.4: legutóbbi sebesség becslés (ha mozgunk, ne írja felül a kompasz)
+let lastSpeedMps = NaN;
+let lastSpeedTs = 0;
+
+function _shouldUseCompassHeading(){
+  try {
+    const now = Date.now();
+    if (isFinite(lastSpeedMps) && lastSpeedMps >= 1.2 && (now - lastSpeedTs) < 5000) return false;
+  } catch (_) {}
+  return true;
+}
+
+
 function _normDeg(d){
   d = (d % 360 + 360) % 360;
   return d;
@@ -711,12 +731,71 @@ function _handleDeviceOrientation(e){
     }
   }
 
-  // állva forgásnál is ezt használjuk a nyílhoz
-  lastHeadingDeg = compassHeadingDeg;
-  _updateMyLocIconHeading();
-  scheduleApplyNavBearing();
+  // v5.42.4: ha van giroszkóp, a forgást az integrált yaw adja (sokkal simább),
+  // a kompasz csak lassan korrigál (drift ellen). Ha nincs gyro, marad a kompasz.
+  if (!_gyroAvailable || !isFinite(gyroHeadingDeg)) {
+    fusedHeadingDeg = compassHeadingDeg;
+  } else if (isFinite(compassHeadingDeg)) {
+    // apró korrekció itt is, ha a devicemotion ritka
+    const d = shortestAngleDelta(gyroHeadingDeg, compassHeadingDeg);
+    gyroHeadingDeg = _normDeg(gyroHeadingDeg + d * 0.02);
+    fusedHeadingDeg = gyroHeadingDeg;
+  } else {
+    fusedHeadingDeg = gyroHeadingDeg;
+  }
+
+  if (_shouldUseCompassHeading() && isFinite(fusedHeadingDeg)) {
+    lastHeadingDeg = fusedHeadingDeg;
+    _updateMyLocIconHeading();
+    scheduleApplyNavBearing();
+  }
 }
 
+
+
+// v5.42.4: Gyro integráció (devicemotion.rotationRate) + kompasz korrekció
+function _handleDeviceMotion(e){
+  try {
+    const rr = e && e.rotationRate;
+    if (!rr) return;
+    let yawRate = rr.alpha;
+    if (!(typeof yawRate === 'number' && isFinite(yawRate))) return;
+    yawRate = clamp(yawRate, -360, 360);
+
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const dt = Math.min(0.05, Math.max(0.005, _motionLastTs ? (now - _motionLastTs) / 1000 : 0.02));
+    _motionLastTs = now;
+
+    if (!isFinite(gyroHeadingDeg)) {
+      gyroHeadingDeg = isFinite(compassHeadingDeg) ? compassHeadingDeg : 0;
+    } else {
+      gyroHeadingDeg = _normDeg(gyroHeadingDeg + yawRate * dt);
+    }
+
+    _gyroAvailable = true;
+
+    if (isFinite(compassHeadingDeg)) {
+      const delta = shortestAngleDelta(gyroHeadingDeg, compassHeadingDeg);
+      const corr = clamp(dt * 0.10, 0.0, 0.06);
+      gyroHeadingDeg = _normDeg(gyroHeadingDeg + delta * corr);
+    }
+
+    fusedHeadingDeg = gyroHeadingDeg;
+
+    if (_shouldUseCompassHeading() && isFinite(fusedHeadingDeg)) {
+      lastHeadingDeg = fusedHeadingDeg;
+      _updateMyLocIconHeading();
+      scheduleApplyNavBearing();
+    }
+  } catch (_) {}
+}
+
+function startMotionIfPossible(){
+  if (_motionInited) return;
+  if (!('DeviceMotionEvent' in window)) return;
+  _motionInited = true;
+  window.addEventListener('devicemotion', _handleDeviceMotion, true);
+}
 async function requestCompassPermissionIfNeeded(){
   // Csak user-gesture-ből hívjuk (gombnyomás), különben iOS nem engedi.
   try {
@@ -743,6 +822,7 @@ function startCompassIfPossible(){
   // Próbáljuk az abszolút eventet, ha van.
   window.addEventListener("deviceorientationabsolute", _handleDeviceOrientation, true);
   window.addEventListener("deviceorientation", _handleDeviceOrientation, true);
+  startMotionIfPossible();
 }
 
 let _prevHeadingRaw = null; // {lat,lng,ts}
@@ -881,6 +961,10 @@ function startMyLocationWatch() {
         speedHint = dH / dtH;
       }
 
+      // v5.42.4: sebesség hint mentése (mozgás közben ne írja felül a gyro/kompasz a heading-et)
+      lastSpeedMps = speedHint;
+      lastSpeedTs = nowTs;
+
       const geoHeadingOk = (typeof pos.coords.heading === "number" && isFinite(pos.coords.heading) && isFinite(speedHint) && speedHint >= 1.2 && acc <= 50);
       const hGeo = geoHeadingOk ? _normDeg(pos.coords.heading) : NaN;
 
@@ -891,8 +975,9 @@ function startMyLocationWatch() {
         lastHeadingDeg = hGeo;
         _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
       } else if (isFinite(hCompass)) {
-        // állva/forgás közben is működjön
-        lastHeadingDeg = hCompass;
+        // állva/forgás közben is működjön (gyro+kompasz fúzióval simábban)
+        const hFused = (typeof fusedHeadingDeg === 'number' && isFinite(fusedHeadingDeg)) ? _normDeg(fusedHeadingDeg) : hCompass;
+        lastHeadingDeg = hFused;
         // _prevHeadingRaw-t csak bázisnak frissítjük
         if (!_prevHeadingRaw) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
       } else if (_prevHeadingRaw) {

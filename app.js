@@ -1,4 +1,4 @@
-const APP_VERSION = "5.42.1";
+const APP_VERSION = "5.42.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -456,6 +456,97 @@ function navYOffsetPx() {
   }
 }
 
+// v5.42.2: Leaflet térkép forgatás (haladási irány mód)
+// Leaflet core-ban nincs natív map-rotation, ezért egy wrapper DIV-et teszünk a
+// leaflet-map-pane köré, és azt forgatjuk CSS transform-mal.
+// Megjegyzés: kattintás (marker felvétel) esetén a lat/lng-et korrigálni kell,
+// ezért a map click eseménynél rotatedClickLatLng() van használva.
+let rotateWrapper = null;
+let mapBearingDeg = 0; // CSS rotate (fok) a wrapperen
+
+function initRotateWrapperIfNeeded(){
+  try {
+    if (!map || !map.getContainer) return;
+    const container = map.getContainer();
+    if (!container) return;
+    const mapPane = container.querySelector(".leaflet-map-pane");
+    if (!mapPane) return;
+
+    // már be van csomagolva?
+    if (mapPane.parentElement && mapPane.parentElement.classList && mapPane.parentElement.classList.contains("leaflet-rotate-wrapper")) {
+      rotateWrapper = mapPane.parentElement;
+      return;
+    }
+
+    const w = document.createElement("div");
+    w.className = "leaflet-rotate-wrapper";
+    w.style.position = "absolute";
+    w.style.top = "0";
+    w.style.left = "0";
+    w.style.width = "100%";
+    w.style.height = "100%";
+    w.style.transformOrigin = "50% 50%";
+    w.style.willChange = "transform";
+
+    container.insertBefore(w, mapPane);
+    w.appendChild(mapPane);
+    rotateWrapper = w;
+  } catch (e) {
+    console.warn("rotate wrapper init failed", e);
+  }
+}
+
+function setMapBearingDeg(targetDeg){
+  try {
+    targetDeg = _normDeg(targetDeg);
+    const delta = shortestAngleDelta(mapBearingDeg, targetDeg);
+    // kis simítás, hogy ne "rángasson"
+    if (Math.abs(delta) < 0.8) return;
+    mapBearingDeg = _normDeg(mapBearingDeg + delta * 0.25);
+    if (rotateWrapper) rotateWrapper.style.transform = `rotate(${mapBearingDeg}deg)`;
+  } catch (_) {}
+}
+
+let _navBearingRaf = null;
+function scheduleApplyNavBearing(){
+  try {
+    if (_navBearingRaf) return;
+    _navBearingRaf = requestAnimationFrame(() => {
+      _navBearingRaf = null;
+      initRotateWrapperIfNeeded();
+      if (!rotateWrapper) return;
+      if (navMode === "heading" && isFinite(lastHeadingDeg)) {
+        // heading-up: a térképet a heading ellentettjével forgatjuk
+        setMapBearingDeg(_normDeg(-lastHeadingDeg));
+      } else {
+        setMapBearingDeg(0);
+      }
+    });
+  } catch (_) {}
+}
+
+function rotatedClickLatLng(e){
+  try {
+    if (!map || !rotateWrapper) return e.latlng;
+    if (navMode !== "heading") return e.latlng;
+    if (!e || !e.originalEvent) return e.latlng;
+
+    const cp = map.mouseEventToContainerPoint(e.originalEvent);
+    const sz = map.getSize();
+    const cx = sz.x / 2;
+    const cy = sz.y / 2;
+    const dx = cp.x - cx;
+    const dy = cp.y - cy;
+    const rad = (-mapBearingDeg) * Math.PI / 180;
+    const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+    const p2 = L.point(cx + rx, cy + ry);
+    return map.containerPointToLatLng(p2);
+  } catch (_) {
+    return e.latlng;
+  }
+}
+
 // Saját hely nyíl iránya (0..360). Ha a böngésző ad heading-et, azt használjuk,
 // különben két GPS pontból számolunk irányt (ha van elmozdulás).
 let lastHeadingDeg = 0;
@@ -493,11 +584,21 @@ function _handleDeviceOrientation(e){
   if (typeof e.webkitCompassHeading === "number" && isFinite(e.webkitCompassHeading)) {
     hdg = e.webkitCompassHeading;
   } else if (typeof e.alpha === "number" && isFinite(e.alpha)) {
-    // W3C: alpha fokban (0..360). Ebből északhoz viszonyított heading: 360 - alpha
-    hdg = 360 - e.alpha;
-    // képernyő elforgatás korrekció
+    // Android/Chromium: alpha-t több böngésző eltérően adja vissza.
+    // Kiszámoljuk mindkét elterjedt variánst, és a legstabilabbat választjuk.
+    const a = e.alpha;
     const sa = _getScreenAngle();
-    hdg = hdg + sa;
+    const h1 = _normDeg(a + sa);             // alpha direkt
+    const h2 = _normDeg((360 - a) + sa);     // alpha invertált
+
+    const abs = (e && (e.absolute === true || e.type === "deviceorientationabsolute"));
+    if (!isFinite(compassHeadingDeg)) {
+      hdg = abs ? h1 : h2;
+    } else {
+      const d1 = Math.abs(shortestAngleDelta(compassHeadingDeg, h1));
+      const d2 = Math.abs(shortestAngleDelta(compassHeadingDeg, h2));
+      hdg = (d1 <= d2) ? h1 : h2;
+    }
   }
   if (!isFinite(hdg)) return;
   hdg = _normDeg(hdg);
@@ -512,6 +613,7 @@ function _handleDeviceOrientation(e){
   // állva forgásnál is ezt használjuk a nyílhoz
   lastHeadingDeg = compassHeadingDeg;
   _updateMyLocIconHeading();
+  scheduleApplyNavBearing();
 }
 
 async function requestCompassPermissionIfNeeded(){
@@ -698,7 +800,7 @@ function startMyLocationWatch() {
         const dtHead = (nowTs - _prevHeadingRaw.ts) / 1000;
         const minMoveForHeading = (isFinite(speedHint) && speedHint >= 1.2)
           ? 3
-          : clamp(Math.max(6, acc * 0.6), 6, 18);
+          : clamp(Math.max(10, acc * 0.9), 10, 30);
 
         if (dHead >= minMoveForHeading && dtHead <= 8) {
           const rawBear = bearingDeg(_prevHeadingRaw.lat, _prevHeadingRaw.lng, latRaw, lngRaw);
@@ -715,6 +817,8 @@ function startMyLocationWatch() {
         _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
       }
 
+
+      scheduleApplyNavBearing();
 
       // Nagyon rossz pontosságnál inkább ne frissítsünk (ugrálás/beltér).
       if (acc > GPS_ACCURACY_MAX_M) {
@@ -1265,6 +1369,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
 
+  // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
+  initRotateWrapperIfNeeded();
+  startCompassIfPossible();
+  scheduleApplyNavBearing();
+
+
   // v5.40: ha a felhasználó kézzel mozgatja/zoomolja a térképet, kikapcsoljuk a GPS-követést.
   // A "Saját helyem" gomb visszakapcsolja.
   map.on("dragstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
@@ -1308,6 +1418,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
   document.getElementById("btnMyLoc").addEventListener("click", async () => {
+    // v5.42.2: indítsuk az iránytűt (Androidon általában prompt nélkül működik)
+    try { await requestCompassPermissionIfNeeded(); } catch (_) {}
+    startCompassIfPossible();
     const ok = await centerToMyLocation();
     if (!ok)
       alert(
@@ -1315,6 +1428,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           "Ellenőrizd, hogy a böngészőben engedélyezve van-e a helymeghatározás (lakatszimbólum a címsorban), " +
           "és hogy van-e GPS/jel."
       );
+  });
+
   
 
 // v5.41: Navigáció mód váltó gomb (észak felül / haladási irány)
@@ -1328,24 +1443,34 @@ if (navBtn) {
   };
   syncNavBtn();
 
-  navBtn.addEventListener("click", () => {
+
+  navBtn.addEventListener("click", async () => {
     navMode = (navMode === "heading") ? "north" : "heading";
     localStorage.setItem("citymap_nav_mode", navMode);
     syncNavBtn();
 
-    // v5.42: a gombnak azonnal legyen hatása → bekapcsoljuk a követést és újraközépre igazítjuk
+    // v5.42.2: azonnali hatás → követés bekapcsol + (heading módban) forgatás
     myLocFollowEnabled = true;
+
+    // Iránytű indítása (Androidon általában prompt nélkül működik)
+    try { await requestCompassPermissionIfNeeded(); } catch (_) {}
+    startCompassIfPossible();
+
+    // Ha még nincs pozíció, kérjünk egy fixet, különben "nem csinál semmit" érzés
+    if (!lastMyLocation) {
+      try { await centerToMyLocation(); } catch (_) {}
+    }
+
+    scheduleApplyNavBearing();
+
     if (lastMyLocation) {
       map.panTo([lastMyLocation.lat, lastMyLocation.lng], { animate: true, duration: 0.35, easeLinearity: 0.25 });
       if (navMode === "heading") {
-        try {
-          map.panBy([0, navYOffsetPx()], { animate: true, duration: 0.35 });
-        } catch (_) {}
+        try { map.panBy([0, navYOffsetPx()], { animate: true, duration: 0.35 }); } catch (_) {}
       }
     }
   });
 }
-});
 
   document.getElementById("btnClear").addEventListener("click", async () => {
     if (!confirm("Biztosan törlöd az összes markert?")) return;
@@ -1356,7 +1481,7 @@ if (navBtn) {
     updateShowAllButtonVisibility();
   });
   map.on("click", (e) => {
-    openModal(e.latlng);
+    openModal(rotatedClickLatLng(e));
   });
   const ok = await centerToMyLocation();
   if (!ok) map.setView([47.4979, 19.0402], 15);
@@ -1681,7 +1806,7 @@ function userIconForZoom(zoom) {
 
 function myLocArrowIconForZoomHeading(zoom, headingDeg) {
   const scale = markerScaleForZoom(zoom);
-  const size = 30 * scale;
+  const size = 38 * scale;
 
   // L.divIcon: az IMG forgatása inline style-lal történik (Leaflet alap, nincs plugin).
   const rot = (typeof headingDeg === "number" && isFinite(headingDeg)) ? headingDeg : 0;
@@ -2950,5 +3075,4 @@ async function refreshFilterData() {
   await fillFilterCombos();
   applyFilter();
 }
-
 

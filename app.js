@@ -1,4 +1,4 @@
-const APP_VERSION = "6.0.5";
+const APP_VERSION = "6.0.6";
 
 /* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
    Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
@@ -1982,21 +1982,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const scaleOutput = (v) => {
         if (typeof v === "number") return v * factor;
-        if (Array.isArray(v)) return ["*", v, factor]; // output expression OK (zoom nincs benne tipikusan)
+        // Más kifejezéseket nem bolygatunk, csak a számokat.
         return v;
       };
 
       const scaleZoomExpr = (expr) => {
         if (!Array.isArray(expr)) return expr;
         const op = expr[0];
-        if (op === "interpolate") {
-          // ["interpolate", ["linear"], ["zoom"], z1, out1, z2, out2, ...]
+        // csak top-level zoom-alapú interpolate/step esetén módosítunk
+        if (op === "interpolate" && Array.isArray(expr[2]) && expr[2][0] === "zoom") {
           const out = expr.slice();
           for (let i = 4; i < out.length; i += 2) out[i] = scaleOutput(out[i]);
           return out;
         }
-        if (op === "step") {
-          // ["step", ["zoom"], out0, z1, out1, z2, out2, ...]
+        if (op === "step" && Array.isArray(expr[1]) && expr[1][0] === "zoom") {
           const out = expr.slice();
           if (out.length >= 3) out[2] = scaleOutput(out[2]);
           for (let i = 4; i < out.length; i += 2) out[i] = scaleOutput(out[i]);
@@ -2008,7 +2007,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mul = (v) => {
         if (typeof v === "number") return v * factor;
         if (Array.isArray(v) && (v[0] === "interpolate" || v[0] === "step")) return scaleZoomExpr(v);
-        // Ha nem zoom-alapú, nem nyúlunk hozzá (különben style validation hibát dobhat).
+        // Biztonság: más expression-t nem csomagolunk "*"-ba, mert zoom kifejezést beágyazhat és elhasal.
         return v;
       };
 
@@ -2047,11 +2046,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("basemaps.js nem töltődött be; a térkép rétegek hiányozhatnak.");
     style.layers = [{ id:"bg", type:"background", paint:{ "background-color":"#f2f2f2" } }];
   }
-if (!window.basemaps) {
-    console.warn("basemaps.js nem töltődött be; a térkép rétegek hiányozhatnak.");
-  }
-
-
   map = new maplibregl.Map({
     container: "map",
     style,

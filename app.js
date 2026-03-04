@@ -1,4 +1,159 @@
-const APP_VERSION = "5.50.1";
+const APP_VERSION = "6.0.4";
+
+/* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
+   Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
+(function(){
+  if (window.L) return;
+
+  class Icon {
+    constructor(opts){ Object.assign(this, opts || {}); }
+  }
+
+  class LatLngBounds {
+    constructor(latlngs){
+      let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
+      for (const ll of (latlngs || [])) {
+        const lat = Array.isArray(ll) ? ll[0] : ll.lat;
+        const lng = Array.isArray(ll) ? ll[1] : ll.lng;
+        if (!isFinite(lat) || !isFinite(lng)) continue;
+        minLat = Math.min(minLat, lat); minLng = Math.min(minLng, lng);
+        maxLat = Math.max(maxLat, lat); maxLng = Math.max(maxLng, lng);
+      }
+      this._sw = { lat: minLat, lng: minLng };
+      this._ne = { lat: maxLat, lng: maxLng };
+    }
+    getSouthWest(){ return this._sw; }
+    getNorthEast(){ return this._ne; }
+  }
+
+  class MarkerWrapper {
+    constructor(latlng, options){
+      this.options = options || {};
+      this.__data = null;
+      this._popup = null;
+      this._popupOpenHandlers = [];
+      this._map = null;
+      this._icon = this.options.icon || null;
+
+      this._el = document.createElement("div");
+      this._el.className = "cm-ml-marker";
+      this._el.style.position = "relative";
+      this._el.style.willChange = "transform";
+
+      this._el.addEventListener("click", (ev) => {
+        try { ev.preventDefault(); } catch(_){}
+        try { ev.stopPropagation(); } catch(_){}
+        if (!this._popup || !this._map) return;
+        if (this._popup.isOpen()) this.closePopup();
+        else this.openPopup();
+      });
+
+      const lat = Array.isArray(latlng) ? latlng[0] : latlng.lat;
+      const lng = Array.isArray(latlng) ? latlng[1] : latlng.lng;
+
+      this._applyIcon();
+      const off = this._offset || [0, 0];
+
+      this._gl = new maplibregl.Marker({ element: this._el, anchor: "top-left", offset: off })
+        .setLngLat([lng, lat]);
+    }
+
+    _applyIcon(){
+      const ic = this._icon;
+      this._el.innerHTML = "";
+      if (!ic) { this._offset = [0,0]; return; }
+
+      const size = ic.iconSize || ic.icon_size || [30, 30];
+      const anchor = ic.iconAnchor || [Math.round(size[0]/2), size[1]];
+
+      this._el.style.width = `${size[0]}px`;
+      this._el.style.height = `${size[1]}px`;
+
+      if (ic.html) {
+        this._el.innerHTML = ic.html;
+      } else {
+        const img = document.createElement("img");
+        img.src = ic.iconUrl || ic.icon_url || "";
+        img.alt = "";
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.display = "block";
+        this._el.appendChild(img);
+      }
+
+      // Anchor-t MapLibre offsettel kezeljük (nem DOM transformmal)
+      this._offset = [-anchor[0], -anchor[1]];
+    }
+
+    _rebuildMarkerIfNeeded(){
+      try{
+        if (!this._gl) return;
+        const ll = this._gl.getLngLat();
+        const wasOpen = !!(this._popup && this._popup.isOpen());
+        try { this._gl.remove(); } catch(_){}
+        const off = this._offset || [0,0];
+        this._gl = new maplibregl.Marker({ element: this._el, anchor: "top-left", offset: off }).setLngLat(ll);
+        if (this._map) this._gl.addTo(this._map);
+        if (wasOpen) { try { this.openPopup(); } catch(_){ } }
+      } catch(_){}
+    }
+
+    addTo(map){ this._map = map; this._gl.addTo(map); return this; }
+    remove(){ try { this._popup && this._popup.remove(); } catch(_){} try { this._gl.remove(); } catch(_){} return this; }
+
+    getLatLng(){ const ll = this._gl.getLngLat(); return { lat: ll.lat, lng: ll.lng }; }
+
+    setLatLng(latlng){
+      const lat = Array.isArray(latlng) ? latlng[0] : latlng.lat;
+      const lng = Array.isArray(latlng) ? latlng[1] : latlng.lng;
+      this._gl.setLngLat([lng, lat]);
+      try { if (this._popup && this._popup.isOpen()) this._popup.setLngLat([lng, lat]); } catch(_){}
+      return this;
+    }
+
+    setIcon(icon){
+      this._icon = icon;
+      this._applyIcon();
+      this._rebuildMarkerIfNeeded();
+      return this;
+    }
+
+    bindPopup(html){
+      const offset = (this._icon && this._icon.popupAnchor) ? this._icon.popupAnchor : [0, -25];
+      this._popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset });
+      this._popup.setHTML(html || "");
+      return this;
+    }
+
+    setPopupContent(html){ if (this._popup) this._popup.setHTML(html || ""); return this; }
+
+    openPopup(){
+      if (!this._popup || !this._map) return this;
+      const ll = this._gl.getLngLat();
+      this._popup.setLngLat(ll).addTo(this._map);
+      const ev = { popup: { getElement: () => this._popup.getElement() } };
+      for (const fn of this._popupOpenHandlers) { try { fn(ev); } catch(e){ console.warn("popupopen handler error", e); } }
+      return this;
+    }
+
+    closePopup(){ try { if (this._popup) this._popup.remove(); } catch(_){} return this; }
+
+    on(evt, fn){
+      if (evt === "popupopen" && typeof fn === "function") this._popupOpenHandlers.push(fn);
+      return this;
+    }
+  }
+
+  window.L = {
+    Icon,
+    icon: (opts) => new Icon(opts),
+    divIcon: (opts) => new Icon(opts),
+    marker: (latlng, opts) => new MarkerWrapper(latlng, opts),
+    latLngBounds: (latlngs) => new LatLngBounds(latlngs),
+    point: (x,y) => ({x,y}),
+  };
+})();
+
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1780,12 +1935,150 @@ document.addEventListener("DOMContentLoaded", async () => {
   // (Ez nem kér engedélyt automatikusan, csak tájékoztat.)
   await checkGeolocationPermissionOnStartup();
 
-  map = L.map("map");
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxNativeZoom: 19,
-    maxZoom: 22,
-    attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
+  // === MapLibre + PMTiles (v6.0.1) ===
+  if (!window.maplibregl) {
+    alert("MapLibre GL hiányzik (maplibregl). Ellenőrizd az index.html include-okat.");
+    return;
+  }
+  if (!window.pmtiles) {
+    alert("PMTiles JS hiányzik (pmtiles). Ellenőrizd az index.html include-okat.");
+    return;
+  }
+
+  // PMTiles protocol regisztráció
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol("pmtiles", protocol.tile);
+
+  // Lokális PMTiles a csomagban (Oroszlány + ~10km)
+  const PM_HTTP_URL = new URL("./data/oroszlany_10km.pmtiles", window.location.href).toString();
+  const PM_URL = `pmtiles://${PM_HTTP_URL}`;
+
+  // Minimal, stabil stílus – a PMTiles protomaps rétegeiből
+  const OSM_ATTR = '© <a href="https://openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+
+  const style = {
+    version: 8,
+    glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+    sprite: "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
+    sources: {
+      "protomaps": { type: "vector", url: PM_URL, attribution: OSM_ATTR }
+    },
+    layers: []
+  };
+
+  // Utak vastagítása (mobilon/HiDPI-n különösen vékonynak látszik)
+  const ROAD_THICK_FACTOR = 3.4; // ha még kevés: 3.8
+
+  function thickenRoadLayers(layers, factor){
+    try{
+      if (!Array.isArray(layers)) return layers;
+      const isRoadLayer = (ly) => {
+        const id = String(ly && ly.id || "").toLowerCase();
+        const sl = String(ly && ly["source-layer"] || "").toLowerCase();
+        return (id.includes("road") || id.includes("roads") || id.includes("highway") || id.includes("transport"))
+            || (sl === "roads" || sl === "transportation");
+      };
+      const mul = (v) => {
+        if (typeof v === "number") return v * factor;
+        if (Array.isArray(v)) return ["*", v, factor];
+        return v;
+      };
+      for (const ly of layers){
+        if (!ly || ly.type !== "line") continue;
+        if (!isRoadLayer(ly)) continue;
+        if (!ly.paint) ly.paint = {};
+        if ("line-width" in ly.paint) ly.paint["line-width"] = mul(ly.paint["line-width"]);
+        if ("line-gap-width" in ly.paint) ly.paint["line-gap-width"] = mul(ly.paint["line-gap-width"]);
+      }
+      return layers;
+    } catch(_){ return layers; }
+  }
+
+  if (window.basemaps) {
+    const layers = basemaps.layers("protomaps", basemaps.namedFlavor("light"), { lang: "hu" });
+    style.layers = thickenRoadLayers(layers, ROAD_THICK_FACTOR);
+  } else {
+    console.warn("basemaps.js nem töltődött be; a térkép rétegek hiányozhatnak.");
+    style.layers = [{ id:"bg", type:"background", paint:{ "background-color":"#f2f2f2" } }];
+  }
+if (!window.basemaps) {
+    console.warn("basemaps.js nem töltődött be; a térkép rétegek hiányozhatnak.");
+  }
+
+
+  map = new maplibregl.Map({
+    container: "map",
+    style,
+    center: [18.31533, 47.48667], // Oroszlány
+    zoom: 14,
+    attributionControl: true
+  });
+
+  // MapLibre zoom vezérlő (a saját UI gombok mellett)
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+
+  // Leaflet-kompatibilis segédfüggvények a meglévő kódrészekhez
+  map.getSize = () => {
+    const c = map.getContainer();
+    return { x: c.clientWidth || 0, y: c.clientHeight || 0 };
+  };
+  map.latLngToContainerPoint = (latlng) => {
+    const lat = Array.isArray(latlng) ? latlng[0] : latlng.lat;
+    const lng = Array.isArray(latlng) ? latlng[1] : latlng.lng;
+    const p = map.project([lng, lat]);
+    return { x: p.x, y: p.y };
+  };
+  map.mouseEventToContainerPoint = (ev) => {
+    const r = map.getContainer().getBoundingClientRect();
+    return { x: (ev.clientX - r.left), y: (ev.clientY - r.top) };
+  };
+  map.containerPointToLatLng = (p) => {
+    const ll = map.unproject([p.x, p.y]);
+    return { lat: ll.lat, lng: ll.lng };
+  };
+
+  // Leaflet setView/panTo kompat
+  map.setView = (latlng, zoom, opts = {}) => {
+    const lat = Array.isArray(latlng) ? latlng[0] : latlng.lat;
+    const lng = Array.isArray(latlng) ? latlng[1] : latlng.lng;
+    const dur = opts && typeof opts.duration === "number" ? Math.round(opts.duration * 1000) : 0;
+    map.easeTo({ center: [lng, lat], zoom: (typeof zoom === "number" ? zoom : map.getZoom()), duration: dur });
+  };
+  map.panTo = (latlng, opts = {}) => {
+    const lat = Array.isArray(latlng) ? latlng[0] : latlng.lat;
+    const lng = Array.isArray(latlng) ? latlng[1] : latlng.lng;
+    const dur = opts && typeof opts.duration === "number" ? Math.round(opts.duration * 1000) : 0;
+    map.easeTo({ center: [lng, lat], duration: dur });
+  };
+
+  // fitBounds kompat (L.latLngBounds-ból)
+  const _fitBounds = map.fitBounds.bind(map);
+  map.fitBounds = (b, opts = {}) => {
+    try {
+      if (b && typeof b.getSouthWest === "function" && typeof b.getNorthEast === "function") {
+        const sw = b.getSouthWest();
+        const ne = b.getNorthEast();
+        return _fitBounds([[sw.lng, sw.lat], [ne.lng, ne.lat]], opts);
+      }
+      return _fitBounds(b, opts);
+    } catch (_) {}
+  };
+
+  // map.removeLayer kompat (marker wrapperhez)
+  map.removeLayer = (layer) => { try { if (layer && typeof layer.remove === "function") layer.remove(); } catch (_) {} };
+
+  // Események: Leaflet-szerű click objektum, ahol kell
+  const _on = map.on.bind(map);
+  map.on = (evt, handler) => {
+    if (evt === "click") {
+      return _on("click", (e) => handler({ latlng: { lat: e.lngLat.lat, lng: e.lngLat.lng }, originalEvent: e.originalEvent || e }));
+    }
+    if (evt === "dragstart" || evt === "zoomstart") {
+      return _on(evt, (e) => handler({ originalEvent: e.originalEvent || e }));
+    }
+    return _on(evt, handler);
+  };
+
 
   // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
   initRotateWrapperIfNeeded();
@@ -3806,3 +4099,23 @@ async function refreshFilterData() {
   applyFilter();
 }
 
+
+// === v6.0.1 MapLibre: nav bearing és kattintás korrekció (Leaflet rotate wrapper helyett) ===
+function rotatedClickLatLng(e){
+  // MapLibre esetén a click esemény már a valódi lat/lng-et adja; nincs CSS-rotáció.
+  return e && e.latlng ? e.latlng : { lat: 0, lng: 0 };
+}
+
+let __cm_nav_bearing_raf = null;
+function scheduleApplyNavBearing(){
+  try {
+    if (!map || typeof map.getBearing !== "function") return;
+    if (__cm_nav_bearing_raf) return;
+    __cm_nav_bearing_raf = requestAnimationFrame(() => {
+      __cm_nav_bearing_raf = null;
+      const target = (navMode === "heading" && isFinite(lastHeadingDeg)) ? _normDeg(-lastHeadingDeg) : 0;
+      // rövid animáció, hogy ne legyen "ugrás"
+      map.easeTo({ bearing: target, duration: 180 });
+    });
+  } catch (_) {}
+}

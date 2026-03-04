@@ -1,4 +1,4 @@
-const APP_VERSION = "6.0.1";
+const APP_VERSION = "6.0.2";
 
 /* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
    Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
@@ -1980,20 +1980,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
     sprite: "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
     sources: {
-      base: { type: "vector", url: PM_URL, attribution: OSM_ATTR }
+      "protomaps": { type: "vector", url: PM_URL, attribution: OSM_ATTR }
     },
-    layers: [
-      { id: "bg", type: "background", paint: { "background-color": "#f2f2f2" } },
-      { id: "landuse", source:"base", "source-layer":"landuse", type:"fill", paint:{ "fill-color":"#e6efe6" } },
-      { id: "water", source:"base", "source-layer":"water", type:"fill", paint:{ "fill-color":"#aadaff" } },
-      { id: "buildings", source:"base", "source-layer":"buildings", type:"fill",
-        paint:{ "fill-color":"#d8d8d8", "fill-outline-color":"#c0c0c0" } },
-      { id: "roads", source:"base", "source-layer":"roads", type:"line",
-        paint:{ "line-color":"#ffffff", "line-width": 1.4 } },
-      { id: "mask", source:"base", "source-layer":"mask", type:"fill",
-        paint:{ "fill-color":"#f2f2f2" } }
-    ]
+    // Teljes Protomaps basemap (utak + utcanevek + POI-k)
+    layers: (window.basemaps
+      ? basemaps.layers("protomaps", basemaps.namedFlavor("light"), { lang: "hu" })
+      : [])
   };
+
+  if (!window.basemaps) {
+    console.warn("basemaps.js nem töltődött be; a térkép rétegek hiányozhatnak.");
+  }
+
 
   map = new maplibregl.Map({
     container: "map",

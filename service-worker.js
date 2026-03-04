@@ -6,7 +6,7 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "5.31" és itt: CACHE_VERSION = "v5.40"
-const CACHE_VERSION = "v6.0.3";
+const CACHE_VERSION = "v5.50.1";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
@@ -58,14 +58,6 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(event.request));
     return;
   }
-
-
-  // PMTiles byte-range kérések: mindig hálózatról (Cache API nem tud Range-et korrektül)
-  if (event.request.headers.has("range") || url.pathname.endsWith(".pmtiles")) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
-
 
   event.respondWith(
     caches.match(event.request).then(cached => cached || fetch(event.request))

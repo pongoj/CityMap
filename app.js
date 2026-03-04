@@ -1,4 +1,4 @@
-const APP_VERSION = "6.0.7";
+const APP_VERSION = "6.0.8";
 
 /* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
    Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
@@ -708,6 +708,9 @@ let mapBearingDeg = 0; // CSS rotate (fok) a wrapperen
 
 function initRotateWrapperIfNeeded(){
   try {
+    // v6.x MapLibre: NEM használunk CSS rotate wrappert (csak MapLibre bearing-et), különben a markerek/click elcsúszik.
+    if (map && typeof map.getBearing === "function") return;
+
     if (!map || !map.getContainer) return;
     const container = map.getContainer();
     if (!container) return;
@@ -762,7 +765,7 @@ function stopBearingAnimatorIfIdle(){
 
 function startBearingAnimator(){
   try {
-    initRotateWrapperIfNeeded();
+    // v6.x MapLibre: initRotateWrapperIfNeeded() kikapcsolva (CSS rotate wrapper nem kell)
     if (!rotateWrapper) return;
 
     if (_bearingAnimRaf) return;
@@ -772,7 +775,7 @@ function startBearingAnimator(){
       _bearingAnimRaf = requestAnimationFrame(tick);
 
       if (!rotateWrapper) {
-        initRotateWrapperIfNeeded();
+        // v6.x MapLibre: initRotateWrapperIfNeeded() kikapcsolva (CSS rotate wrapper nem kell)
         if (!rotateWrapper) return;
       }
 
@@ -1999,6 +2002,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     attributionControl: true
   });
 
+
+  // v6.0.8: ha a basemap stílus hiányzó ikonokra hivatkozik, adjunk hozzá átlátszó 1x1 pixelt, hogy ne dobjon warningot
+  try {
+    map.on("styleimagemissing", (e) => {
+      try {
+        const id = e && e.id ? e.id : null;
+        if (!id) return;
+        if (map.hasImage && map.hasImage(id)) return;
+        const empty = new Uint8Array([0,0,0,0]);
+        map.addImage(id, { width: 1, height: 1, data: empty }, { pixelRatio: 1 });
+      } catch(_) {}
+    });
+  } catch(_) {}
+
+
   // MapLibre zoom vezérlő (a saját UI gombok mellett)
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
 
@@ -2066,7 +2084,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
   // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
-  initRotateWrapperIfNeeded();
+  // v6.x MapLibre: initRotateWrapperIfNeeded() kikapcsolva (CSS rotate wrapper nem kell)
   startCompassIfPossible();
   scheduleApplyNavBearing();
 

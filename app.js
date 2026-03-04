@@ -1,4 +1,4 @@
-const APP_VERSION = "6.0.4";
+const APP_VERSION = "6.0.5";
 
 /* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
    Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
@@ -1967,17 +1967,63 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   // Utak vastagítása (mobilon/HiDPI-n különösen vékonynak látszik)
-  const ROAD_THICK_FACTOR = 3.4; // ha még kevés: 3.8
+  const ROAD_THICK_FACTOR = 4.0; // ha még kevés: 3.8
 
   function thickenRoadLayers(layers, factor){
     try{
       if (!Array.isArray(layers)) return layers;
+
       const isRoadLayer = (ly) => {
         const id = String(ly && ly.id || "").toLowerCase();
         const sl = String(ly && ly["source-layer"] || "").toLowerCase();
         return (id.includes("road") || id.includes("roads") || id.includes("highway") || id.includes("transport"))
             || (sl === "roads" || sl === "transportation");
       };
+
+      const scaleOutput = (v) => {
+        if (typeof v === "number") return v * factor;
+        if (Array.isArray(v)) return ["*", v, factor]; // output expression OK (zoom nincs benne tipikusan)
+        return v;
+      };
+
+      const scaleZoomExpr = (expr) => {
+        if (!Array.isArray(expr)) return expr;
+        const op = expr[0];
+        if (op === "interpolate") {
+          // ["interpolate", ["linear"], ["zoom"], z1, out1, z2, out2, ...]
+          const out = expr.slice();
+          for (let i = 4; i < out.length; i += 2) out[i] = scaleOutput(out[i]);
+          return out;
+        }
+        if (op === "step") {
+          // ["step", ["zoom"], out0, z1, out1, z2, out2, ...]
+          const out = expr.slice();
+          if (out.length >= 3) out[2] = scaleOutput(out[2]);
+          for (let i = 4; i < out.length; i += 2) out[i] = scaleOutput(out[i]);
+          return out;
+        }
+        return expr;
+      };
+
+      const mul = (v) => {
+        if (typeof v === "number") return v * factor;
+        if (Array.isArray(v) && (v[0] === "interpolate" || v[0] === "step")) return scaleZoomExpr(v);
+        // Ha nem zoom-alapú, nem nyúlunk hozzá (különben style validation hibát dobhat).
+        return v;
+      };
+
+      for (const ly of layers){
+        if (!ly || ly.type !== "line") continue;
+        if (!isRoadLayer(ly)) continue;
+        if (!ly.paint) ly.paint = {};
+        if ("line-width" in ly.paint) ly.paint["line-width"] = mul(ly.paint["line-width"]);
+        if ("line-gap-width" in ly.paint) ly.paint["line-gap-width"] = mul(ly.paint["line-gap-width"]);
+      }
+      return layers;
+    } catch(_){
+      return layers;
+    }
+  };
       const mul = (v) => {
         if (typeof v === "number") return v * factor;
         if (Array.isArray(v)) return ["*", v, factor];

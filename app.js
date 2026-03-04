@@ -1,4 +1,4 @@
-const APP_VERSION = "6.0.2";
+const APP_VERSION = "6.0.3";
 
 /* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
    Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
@@ -59,35 +59,47 @@ const APP_VERSION = "6.0.2";
     }
 
     _applyIcon(){
-      const ic = this._icon;
-      // reset
-      this._el.innerHTML = "";
-      if (!ic) return;
+  const ic = this._icon;
 
-      const size = ic.iconSize || ic.icon_size || [30, 30];
-      const anchor = ic.iconAnchor || [Math.round(size[0]/2), size[1]];
+  // FONTOS: ne állítsd a külső elem transformját!
+  // A MapLibre ezt használja a marker pozicionálásához (zoom/pan közben folyton írja).
+  this._el.innerHTML = "";
+  this._el.style.position = "relative";
+  this._el.style.overflow = "visible";
+  this._el.style.willChange = "transform";
 
-      this._el.style.width = `${size[0]}px`;
-      this._el.style.height = `${size[1]}px`;
-      // A marker koordinátája az ikonon belül az anchor pont; ezért "visszahúzzuk" a div-et.
-      this._el.style.transform = `translate(${-anchor[0]}px, ${-anchor[1]}px)`;
+  if (!ic) return;
 
-      if (ic.html) {
-        // divIcon jelleg
-        const wrap = document.createElement("div");
-        wrap.style.width = "100%";
-        wrap.style.height = "100%";
-        wrap.innerHTML = ic.html;
-        this._el.appendChild(wrap);
-      } else {
-        const img = document.createElement("img");
-        img.src = ic.iconUrl || ic.icon_url || "";
-        img.alt = "";
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.display = "block";
-        this._el.appendChild(img);
-      }
+  const size = ic.iconSize || ic.icon_size || [30, 30];
+  const anchor = ic.iconAnchor || [Math.round(size[0] / 2), size[1]];
+
+  // Külső doboz mérete (click target)
+  this._el.style.width = `${size[0]}px`;
+  this._el.style.height = `${size[1]}px`;
+
+  // Belső wrapper: itt toljuk el az ikon képét úgy, hogy az anchor a (0,0)-ba essen
+  const inner = document.createElement("div");
+  inner.style.position = "absolute";
+  inner.style.left = "0";
+  inner.style.top = "0";
+  inner.style.transform = `translate(${-anchor[0]}px, ${-anchor[1]}px)`;
+  inner.style.transformOrigin = "0 0";
+  inner.style.willChange = "transform";
+
+  if (ic.html) {
+    inner.innerHTML = ic.html;
+  } else {
+    const img = document.createElement("img");
+    img.src = ic.iconUrl || ic.icon_url || "";
+    img.alt = "";
+    img.style.width = `${size[0]}px`;
+    img.style.height = `${size[1]}px`;
+    img.style.display = "block";
+    inner.appendChild(img);
+  }
+
+  this._el.appendChild(inner);
+
     }
 
     addTo(map){

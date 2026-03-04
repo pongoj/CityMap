@@ -1,4 +1,4 @@
-const APP_VERSION = "6.0.6";
+const APP_VERSION = "6.0.7";
 
 /* === Leaflet kompat réteg MapLibre-hez (csak a CityMap által használt minimál API) ===
    Cél: a régi kód nagy részét változtatás nélkül futtatni Leaflet nélkül. */
@@ -806,47 +806,6 @@ function startBearingAnimator(){
 
     _bearingAnimRaf = requestAnimationFrame(tick);
   } catch (_) {}
-}
-
-let _navBearingRaf = null;
-function scheduleApplyNavBearing(){
-  try {
-    if (_navBearingRaf) return;
-    _navBearingRaf = requestAnimationFrame(() => {
-      _navBearingRaf = null;
-      initRotateWrapperIfNeeded();
-      if (!rotateWrapper) return;
-
-      if (navMode === "heading" && isFinite(lastHeadingDeg)) {
-        // heading-up: a térképet a heading ellentettjével forgatjuk
-        setMapBearingTargetDeg(_normDeg(-lastHeadingDeg));
-      } else {
-        setMapBearingTargetDeg(0);
-      }
-    });
-  } catch (_) {}
-}
-
-function rotatedClickLatLng(e){
-  try {
-    if (!map || !rotateWrapper) return e.latlng;
-    if (navMode !== "heading") return e.latlng;
-    if (!e || !e.originalEvent) return e.latlng;
-
-    const cp = map.mouseEventToContainerPoint(e.originalEvent);
-    const sz = map.getSize();
-    const cx = sz.x / 2;
-    const cy = sz.y / 2;
-    const dx = cp.x - cx;
-    const dy = cp.y - cy;
-    const rad = (-mapBearingDeg) * Math.PI / 180;
-    const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
-    const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
-    const p2 = L.point(cx + rx, cy + ry);
-    return map.containerPointToLatLng(p2);
-  } catch (_) {
-    return e.latlng;
-  }
 }
 
 // Saját hely nyíl iránya (0..360). Ha a böngésző ad heading-et, azt használjuk,
@@ -1967,7 +1926,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   // Utak vastagítása (mobilon/HiDPI-n különösen vékonynak látszik)
-  const ROAD_THICK_FACTOR = 4.0; // ha még kevés: 3.8
+  const ROAD_THICK_FACTOR = 4.0; // ha még kevés: 4.6
 
   function thickenRoadLayers(layers, factor){
     try{
@@ -1976,38 +1935,38 @@ document.addEventListener("DOMContentLoaded", async () => {
       const isRoadLayer = (ly) => {
         const id = String(ly && ly.id || "").toLowerCase();
         const sl = String(ly && ly["source-layer"] || "").toLowerCase();
-        return (id.includes("road") || id.includes("roads") || id.includes("highway") || id.includes("transport"))
+        return (id.includes("road") || id.includes("roads") || id.includes("highway") || id.includes("transport") || id.includes("motorway"))
             || (sl === "roads" || sl === "transportation");
       };
 
-      const scaleOutput = (v) => {
-        if (typeof v === "number") return v * factor;
-        // Más kifejezéseket nem bolygatunk, csak a számokat.
-        return v;
-      };
+      const scaleNum = (v) => (typeof v === "number" ? v * factor : v);
 
       const scaleZoomExpr = (expr) => {
         if (!Array.isArray(expr)) return expr;
         const op = expr[0];
-        // csak top-level zoom-alapú interpolate/step esetén módosítunk
+
+        // ["interpolate", ["linear"], ["zoom"], z1, out1, z2, out2, ...]
         if (op === "interpolate" && Array.isArray(expr[2]) && expr[2][0] === "zoom") {
           const out = expr.slice();
-          for (let i = 4; i < out.length; i += 2) out[i] = scaleOutput(out[i]);
+          for (let i = 4; i < out.length; i += 2) out[i] = scaleNum(out[i]);
           return out;
         }
+
+        // ["step", ["zoom"], out0, z1, out1, z2, out2, ...]
         if (op === "step" && Array.isArray(expr[1]) && expr[1][0] === "zoom") {
           const out = expr.slice();
-          if (out.length >= 3) out[2] = scaleOutput(out[2]);
-          for (let i = 4; i < out.length; i += 2) out[i] = scaleOutput(out[i]);
+          if (out.length >= 3) out[2] = scaleNum(out[2]);
+          for (let i = 4; i < out.length; i += 2) out[i] = scaleNum(out[i]);
           return out;
         }
+
+        // Ne nyúljunk más expression-höz (pl. "*", "case", stb.) – könnyen invalid lesz.
         return expr;
       };
 
       const mul = (v) => {
         if (typeof v === "number") return v * factor;
         if (Array.isArray(v) && (v[0] === "interpolate" || v[0] === "step")) return scaleZoomExpr(v);
-        // Biztonság: más expression-t nem csomagolunk "*"-ba, mert zoom kifejezést beágyazhat és elhasal.
         return v;
       };
 
@@ -2022,21 +1981,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch(_){
       return layers;
     }
-  };
-      const mul = (v) => {
-        if (typeof v === "number") return v * factor;
-        if (Array.isArray(v)) return ["*", v, factor];
-        return v;
-      };
-      for (const ly of layers){
-        if (!ly || ly.type !== "line") continue;
-        if (!isRoadLayer(ly)) continue;
-        if (!ly.paint) ly.paint = {};
-        if ("line-width" in ly.paint) ly.paint["line-width"] = mul(ly.paint["line-width"]);
-        if ("line-gap-width" in ly.paint) ly.paint["line-gap-width"] = mul(ly.paint["line-gap-width"]);
-      }
-      return layers;
-    } catch(_){ return layers; }
   }
 
   if (window.basemaps) {
@@ -2046,6 +1990,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("basemaps.js nem töltődött be; a térkép rétegek hiányozhatnak.");
     style.layers = [{ id:"bg", type:"background", paint:{ "background-color":"#f2f2f2" } }];
   }
+
   map = new maplibregl.Map({
     container: "map",
     style,
@@ -3384,10 +3329,6 @@ function setSettingsPage(page) {
 // Cél: Edge laptopon is működjön megbízhatóan.
 // ---------------------------
 
-
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
 
 function hexToRgb(hex) {
   const m = String(hex).trim().match(/^#([0-9a-fA-F]{6})$/);

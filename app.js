@@ -1,4 +1,4 @@
-const APP_VERSION = "5.52";
+const APP_VERSION = "6.0";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -701,87 +701,6 @@ let compassHeadingDeg = NaN; // 0..360, eszköz iránytűből (állva forgásná
 let _compassInited = false;
 let _compassPermGranted = false;
 
-// v5.52: Headings szétválasztása + stabilabb "A" logika
-// - North-up módban: térkép fix észak, a nyíl az eszköz tájolását mutatja (device heading)
-// - Heading-up módban: ha mozgunk → track heading (GPS/course), ha állunk → device heading (így felvitelkor fordulásra is reagál)
-// - Álló helyzetben a device heading erős deadband+simítás miatt nem "remeg".
-let deviceHeadingDeg = NaN;     // stabilizált eszköz heading (gyro+kompasz fúzió + deadband)
-let trackHeadingDeg = NaN;      // mozgás iránya (GPS heading / két pontból bearing)
-let lastAccM = NaN;
-let lastAccTs = 0;
-
-// Gyro jel (yaw rate) – csak a gyorsabb követéshez használjuk (ha tényleg forgatsz).
-let _lastYawRateAbs = 0;
-let _lastYawRateTs = 0;
-
-function _isMovingStrongNow(){
-  try{
-    const now = Date.now();
-    if (!isFinite(lastSpeedMps) || (now - lastSpeedTs) > 4500) return false;
-    if (isFinite(lastAccM) && (now - lastAccTs) < 4500 && lastAccM > 50) return false;
-    return lastSpeedMps >= 1.2;
-  }catch(_){ return false; }
-}
-
-function _updateActiveHeading(){
-  try{
-    let h = NaN;
-
-    if (navMode === "heading") {
-      if (_isMovingStrongNow() && isFinite(trackHeadingDeg)) h = trackHeadingDeg;
-      else if (isFinite(deviceHeadingDeg)) h = deviceHeadingDeg;
-      else if (isFinite(trackHeadingDeg)) h = trackHeadingDeg;
-    } else { // north
-      if (isFinite(deviceHeadingDeg)) h = deviceHeadingDeg;
-      else if (isFinite(trackHeadingDeg)) h = trackHeadingDeg;
-    }
-
-    if (!isFinite(h)) return;
-    lastHeadingDeg = _normDeg(h);
-    _updateMyLocIconHeading();
-    scheduleApplyNavBearing();
-  }catch(_){}
-}
-
-function _setTrackHeadingDeg(h){
-  if (!(typeof h === "number" && isFinite(h))) return;
-  trackHeadingDeg = _normDeg(h);
-  _updateActiveHeading();
-}
-
-let _deviceHeadingStableDeg = NaN;
-function _setDeviceHeadingDeg(raw){
-  if (!(typeof raw === "number" && isFinite(raw))) return;
-  raw = _normDeg(raw);
-
-  const moving = _isMovingStrongNow();
-
-  if (!isFinite(_deviceHeadingStableDeg)) _deviceHeadingStableDeg = raw;
-
-  const delta = shortestAngleDelta(_deviceHeadingStableDeg, raw);
-  const absd = Math.abs(delta);
-
-  // Állva: nagyobb deadband, hogy ne remegjen; mozgásban: kisebb, hogy ne laggoljon.
-  const dead = moving ? 1.4 : 4.2;
-
-  if (absd < dead) {
-    // ignore apró zaj
-  } else {
-    let alpha;
-    if (moving) alpha = 0.28;
-    else alpha = (absd > 25) ? 0.38 : (absd > 12) ? 0.22 : 0.12;
-
-    // Ha tényleg forgatsz (gyro), akkor gyorsabban kövesse.
-    const now = Date.now();
-    if ((now - _lastYawRateTs) < 200 && _lastYawRateAbs > 6) alpha = Math.max(alpha, 0.45);
-
-    _deviceHeadingStableDeg = _normDeg(_deviceHeadingStableDeg + delta * alpha);
-  }
-
-  deviceHeadingDeg = _deviceHeadingStableDeg;
-  _updateActiveHeading();
-}
-
 // v5.42.3: kompasz zaj csillapítás (Google-szerűbb, kevesebb ugrálás)
 let _compassLastTs = 0;
 let _compassOutlierStreak = 0;
@@ -912,8 +831,10 @@ function _handleDeviceOrientation(e){
     fusedHeadingDeg = gyroHeadingDeg;
   }
 
-  if (isFinite(fusedHeadingDeg)) {
-    _setDeviceHeadingDeg(fusedHeadingDeg);
+  if (_shouldUseCompassHeading() && isFinite(fusedHeadingDeg)) {
+    lastHeadingDeg = fusedHeadingDeg;
+    _updateMyLocIconHeading();
+    scheduleApplyNavBearing();
   }
 }
 
@@ -927,10 +848,6 @@ function _handleDeviceMotion(e){
     let yawRate = rr.alpha;
     if (!(typeof yawRate === 'number' && isFinite(yawRate))) return;
     yawRate = clamp(yawRate, -360, 360);
-
-    // v5.52: gyro jel erősség mentése (stabilabb követés állva)
-    _lastYawRateAbs = Math.abs(yawRate);
-    _lastYawRateTs = Date.now();
 
     const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     const dt = Math.min(0.05, Math.max(0.005, _motionLastTs ? (now - _motionLastTs) / 1000 : 0.02));
@@ -952,10 +869,12 @@ function _handleDeviceMotion(e){
 
     fusedHeadingDeg = gyroHeadingDeg;
 
-  if (isFinite(fusedHeadingDeg)) {
-    _setDeviceHeadingDeg(fusedHeadingDeg);
-  }
-} catch (_) {}
+    if (_shouldUseCompassHeading() && isFinite(fusedHeadingDeg)) {
+      lastHeadingDeg = fusedHeadingDeg;
+      _updateMyLocIconHeading();
+      scheduleApplyNavBearing();
+    }
+  } catch (_) {}
 }
 
 function startMotionIfPossible(){
@@ -1118,9 +1037,6 @@ function startMyLocationWatch() {
       }
 
       const nowTs = Date.now();
-      lastAccM = acc;
-      lastAccTs = nowTs;
-
 
       // Heading források:
       // - mozgás közben: geolocation heading (ha van)
@@ -1139,13 +1055,20 @@ function startMyLocationWatch() {
       const geoHeadingOk = (typeof pos.coords.heading === "number" && isFinite(pos.coords.heading) && isFinite(speedHint) && speedHint >= 1.2 && acc <= 50);
       const hGeo = geoHeadingOk ? _normDeg(pos.coords.heading) : NaN;
 
-      // v5.52: Track heading (mozgás iránya) – heading-up módban ezt használjuk, ha tényleg mozgunk.
-      // North-up módban nem kötelező, de támpont lehet, ha nincs szenzor.
+      // Iránytű heading-et a deviceorientation event frissíti (compassHeadingDeg).
+      const hCompass = (typeof compassHeadingDeg === "number" && isFinite(compassHeadingDeg)) ? _normDeg(compassHeadingDeg) : NaN;
+
       if (isFinite(hGeo)) {
-        trackHeadingDeg = hGeo;
+        lastHeadingDeg = hGeo;
         _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+      } else if (isFinite(hCompass)) {
+        // állva/forgás közben is működjön (gyro+kompasz fúzióval simábban)
+        const hFused = (typeof fusedHeadingDeg === 'number' && isFinite(fusedHeadingDeg)) ? _normDeg(fusedHeadingDeg) : hCompass;
+        lastHeadingDeg = hFused;
+        // _prevHeadingRaw-t csak bázisnak frissítjük
+        if (!_prevHeadingRaw) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
       } else if (_prevHeadingRaw) {
-        // fallback: két GPS pontból bearing (ha van elmozdulás)
+        // fallback: két GPS pontból bearing
         const dHead = distanceMeters(latRaw, lngRaw, _prevHeadingRaw.lat, _prevHeadingRaw.lng);
         const dtHead = (nowTs - _prevHeadingRaw.ts) / 1000;
         const minMoveForHeading = (isFinite(speedHint) && speedHint >= 1.2)
@@ -1154,10 +1077,10 @@ function startMyLocationWatch() {
 
         if (dHead >= minMoveForHeading && dtHead <= 8) {
           const rawBear = bearingDeg(_prevHeadingRaw.lat, _prevHeadingRaw.lng, latRaw, lngRaw);
-          if (!isFinite(trackHeadingDeg)) trackHeadingDeg = rawBear;
+          if (!isFinite(lastHeadingDeg)) lastHeadingDeg = rawBear;
           else {
-            const delta = shortestAngleDelta(trackHeadingDeg, rawBear);
-            if (Math.abs(delta) >= 8) trackHeadingDeg = _normDeg(trackHeadingDeg + delta * 0.35);
+            const delta = shortestAngleDelta(lastHeadingDeg, rawBear);
+            if (Math.abs(delta) >= 8) lastHeadingDeg = _normDeg(lastHeadingDeg + delta * 0.35);
           }
           _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
         } else if (dtHead > 8) {
@@ -1167,11 +1090,8 @@ function startMyLocationWatch() {
         _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
       }
 
-      if (isFinite(trackHeadingDeg)) {
-        _setTrackHeadingDeg(trackHeadingDeg);
-      } else {
-        _updateActiveHeading();
-      }
+
+      scheduleApplyNavBearing();
 
       // Nagyon rossz pontosságnál inkább ne frissítsünk (ugrálás/beltér).
       if (acc > GPS_ACCURACY_MAX_M) {
@@ -1861,16 +1781,171 @@ document.addEventListener("DOMContentLoaded", async () => {
   await checkGeolocationPermissionOnStartup();
 
   map = L.map("map");
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxNativeZoom: 19,
-    maxZoom: 22,
-    attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
+
+  // --- Basemap (kísérleti): MapLibre + PMTiles (Protomaps) ---
+  // Alapértelmezés: online Protomaps daily build (ingyenes).
+  // Ha később készítesz saját kivágatot, tedd a /data mappába és írd át a LOCAL_PMTILES_URL-t.
+  const LOCAL_PMTILES_URL = "./data/oroszlany_10km.pmtiles";
+  const REMOTE_PMTILES_URL = "https://build.protomaps.com/20260228.pmtiles";
+
+  function ensureMapLibreLeafletLayer() {
+    if (!window.maplibregl) throw new Error("maplibregl hiányzik");
+    if (!window.pmtiles) throw new Error("pmtiles hiányzik");
+    if (!window.basemaps) throw new Error("basemaps hiányzik");
+
+    // PMTiles protocol regisztráció (csak egyszer)
+    if (!window.__pmtiles_protocol_registered__) {
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol("pmtiles", protocol.tile);
+      window.__pmtiles_protocol_registered__ = true;
+    }
+
+    // Minimál Leaflet layer, ami MapLibre-t renderel a háttérbe (külső plugin nélkül)
+    if (!L.MapLibreGL) {
+      L.MapLibreGL = L.Layer.extend({
+        initialize: function (options) {
+          this.options = options || {};
+        },
+
+        onAdd: function (leafletMap) {
+          this._leafletMap = leafletMap;
+          const pane = leafletMap.getPanes().tilePane;
+          this._container = L.DomUtil.create("div", "leaflet-maplibre-layer", pane);
+          this._container.style.position = "absolute";
+          this._container.style.top = "0";
+          this._container.style.left = "0";
+          this._container.style.width = leafletMap.getSize().x + "px";
+          this._container.style.height = leafletMap.getSize().y + "px";
+          this._container.style.pointerEvents = "none";
+
+          const center = leafletMap.getCenter();
+          const zoom = leafletMap.getZoom();
+
+          this._glMap = new maplibregl.Map({
+            container: this._container,
+            style: this.options.style,
+            interactive: false,
+            attributionControl: false,
+            center: [center.lng, center.lat],
+            // Leaflet 256px tiles vs MapLibre 512px tiles => zoom-1
+            zoom: zoom - 1,
+            bearing: 0,
+            pitch: 0,
+            renderWorldCopies: true,
+          });
+
+          leafletMap.on("move", this._update, this);
+          leafletMap.on("zoom", this._update, this);
+          leafletMap.on("resize", this._resize, this);
+
+          this._update();
+        },
+
+        onRemove: function (leafletMap) {
+          leafletMap.off("move", this._update, this);
+          leafletMap.off("zoom", this._update, this);
+          leafletMap.off("resize", this._resize, this);
+          if (this._glMap) {
+            this._glMap.remove();
+            this._glMap = null;
+          }
+          if (this._container) {
+            this._container.remove();
+            this._container = null;
+          }
+        },
+
+        _resize: function () {
+          if (!this._leafletMap || !this._container || !this._glMap) return;
+          const size = this._leafletMap.getSize();
+          this._container.style.width = size.x + "px";
+          this._container.style.height = size.y + "px";
+          this._glMap.resize();
+          this._update();
+        },
+
+        _update: function () {
+          if (!this._leafletMap || !this._container || !this._glMap) return;
+          const size = this._leafletMap.getSize();
+          this._container.style.width = size.x + "px";
+          this._container.style.height = size.y + "px";
+
+          const center = this._leafletMap.getCenter();
+          const zoom = this._leafletMap.getZoom();
+
+          this._glMap.jumpTo({
+            center: [center.lng, center.lat],
+            zoom: zoom - 1,
+          });
+
+          // Leaflet a pane pozícióját CSS transformmal mozgatja; igazítsuk a MapLibre konténert is
+          const transform = this._leafletMap.getPanes().mapPane.style.transform;
+          if (transform) this._container.style.transform = transform;
+        },
+      });
+
+      L.maplibreGL = function (options) {
+        return new L.MapLibreGL(options);
+      };
+    }
+  }
+
+  async function initBasemapMapLibrePMTiles() {
+    ensureMapLibreLeafletLayer();
+
+    // Próbáljuk először a lokális fájlt (ha létezik), különben remote.
+    let pmtilesUrl = REMOTE_PMTILES_URL;
+    try {
+      const r = await fetch(LOCAL_PMTILES_URL, { method: "HEAD", cache: "no-store" });
+      if (r && r.ok) pmtilesUrl = LOCAL_PMTILES_URL;
+    } catch (_) {
+      // marad a remote
+    }
+
+    const sourceName = "protomaps";
+    const style = {
+      version: 8,
+      glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+      sprite: "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
+      sources: {
+        [sourceName]: {
+          type: "vector",
+          url: `pmtiles://${pmtilesUrl}`,
+          attribution: "© OpenStreetMap contributors",
+        },
+      },
+      layers: basemaps.layers(sourceName, basemaps.namedFlavor("light"), { lang: "hu" }),
+    };
+
+    // Régi layer (ha volt)
+    if (window.__basemap_layer__) {
+      try { map.removeLayer(window.__basemap_layer__); } catch (_) {}
+      window.__basemap_layer__ = null;
+    }
+
+    const layer = L.maplibreGL({ style });
+    layer.addTo(map);
+    window.__basemap_layer__ = layer;
+
+    // Leaflet attribution
+    if (map && map.attributionControl) {
+      map.attributionControl.setPrefix("");
+      map.attributionControl.addAttribution("© OpenStreetMap contributors");
+    }
+  }
+
+  // Ha valamiért nem tölt be a MapLibre/PMTiles, visszaesünk az OSM rasterre (régi működés).
+  initBasemapMapLibrePMTiles().catch(() => {
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors",
+      maxZoom: 20,
+    }).addTo(map);
+  });
 
   // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
   initRotateWrapperIfNeeded();
   startCompassIfPossible();
-  _updateActiveHeading();
+  scheduleApplyNavBearing();
 
 
   // v5.40: ha a felhasználó kézzel mozgatja/zoomolja a térképet, kikapcsoljuk a GPS-követést.
@@ -1975,8 +2050,8 @@ if (navBtn) {
       await centerToMyLocation();
     } catch (_) {}
 
-    // v5.52: az aktív heading újraszámolása (north/heading mód) + forgatás alkalmazása
-    _updateActiveHeading();
+    // Forgatás/irány alkalmazása a kiválasztott navigáció mód szerint
+    scheduleApplyNavBearing();
 
     // frissítsük az alsó "Középre" gomb láthatóságát is
     try { updateMyLocFabVisibility(); } catch (_) {}

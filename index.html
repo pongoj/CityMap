@@ -11,7 +11,6 @@
   <meta name="theme-color" content="#2c7be5">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="icon" href="icons/icon-512.png">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
   <style>
     html, body, #map { height: 100%; margin: 0; }
@@ -778,6 +777,9 @@
       .pick-panel{ left:10px !important; right:10px !important; width:auto !important; }
     }
 </style>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.css" crossorigin="anonymous"/>
+  <script src="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/pmtiles@4.4.0/dist/pmtiles.js"></script>
 </head>
 
 <body>
@@ -1090,7 +1092,6 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="db.js"></script>
   <script src="app.js"></script>
   <div id="cmPickPanel" class="pick-panel" style="display:none"></div>

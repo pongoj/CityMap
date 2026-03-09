@@ -1,4 +1,4 @@
-const APP_VERSION = "5.50.1";
+const APP_VERSION = "5.51";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -500,10 +500,14 @@ const GPS_MIN_CENTER_INTERVAL_MS = 650;
 let myLocFollowEnabled = true;
 // v5.41: Navigáció mód (térkép követés viselkedése)
 // - "north": észak felül, középre követ
-// - "heading": haladási irány (nyíl + "előrenézős" követés)
-let navMode = (localStorage.getItem("citymap_nav_mode") || "north"); // "north" | "heading"
+// - "lite": haladási irány (kompromisszum): a térkép NEM forog, csak a nyíl + "előrenézős" követés
+let navMode = (() => {
+  const raw = (localStorage.getItem("citymap_nav_mode") || "north");
+  // v5.51: migráció – a régi "heading" (térkép forgatós) mód helyett a stabil "lite" módot használjuk.
+  return (raw === "heading") ? "lite" : raw;
+})(); // "north" | "lite"
 
-// v5.42: "heading" módban a saját helyet kissé lejjebb tartjuk (előrenézés érzet)
+// v5.42: "lite" módban a saját helyet kissé lejjebb tartjuk (előrenézés érzet)
 function navYOffsetPx() {
   try {
     const h = map && map.getSize ? map.getSize().y : 0;
@@ -543,7 +547,7 @@ function updateMyLocFabVisibility() {
   }
 }
 
-// v5.42.2: Leaflet térkép forgatás (haladási irány mód)
+// v5.42.2: Leaflet térkép forgatás (régi "heading" mód)
 // Leaflet core-ban nincs natív map-rotation, ezért egy wrapper DIV-et teszünk a
 // leaflet-map-pane köré, és azt forgatjuk CSS transform-mal.
 // Megjegyzés: kattintás (marker felvétel) esetén a lat/lng-et korrigálni kell,
@@ -655,18 +659,26 @@ function startBearingAnimator(){
 
 let _navBearingRaf = null;
 function scheduleApplyNavBearing(){
+  // v5.51: kompromisszumos navigáció – a térkép NEM forog.
+  // A gombos "haladási irány" csak a saját hely nyilat forgatja + előrenéz.
+  // Ha régi verzióból maradna animátor/wrapper, kényszerítsük 0-ra és állítsuk le.
   try {
+    // Normál esetben (új verzióban) sosem indul el forgatás: ilyenkor azonnal kilépünk.
+    if (!_bearingAnimRaf && !rotateWrapper && mapBearingDeg === 0 && mapBearingTargetDeg === 0) return;
+
     if (_navBearingRaf) return;
     _navBearingRaf = requestAnimationFrame(() => {
       _navBearingRaf = null;
-      initRotateWrapperIfNeeded();
-      if (!rotateWrapper) return;
 
-      if (navMode === "heading" && isFinite(lastHeadingDeg)) {
-        // heading-up: a térképet a heading ellentettjével forgatjuk
-        setMapBearingTargetDeg(_normDeg(-lastHeadingDeg));
-      } else {
-        setMapBearingTargetDeg(0);
+      mapBearingTargetDeg = 0;
+      mapBearingDeg = 0;
+
+      if (_bearingAnimRaf) {
+        try { cancelAnimationFrame(_bearingAnimRaf); } catch (_) {}
+        _bearingAnimRaf = null;
+      }
+      if (rotateWrapper) {
+        try { rotateWrapper.style.transform = "rotate(0deg)"; } catch (_) {}
       }
     });
   } catch (_) {}
@@ -1165,26 +1177,25 @@ function startMyLocationWatch() {
           lastMyLocCenterTs = nowTs;
           lastCenteredMyLocation = { lat: filteredMyLocation.lat, lng: filteredMyLocation.lng };
           
-// v5.41: nav mód "heading" esetén előrenézünk (a pozíció kicsit lejjebb marad a képernyőn).
+// v5.51: kompromisszumos "lite" mód – térkép nem forog.
+// Követéskor (ha valóban mozgunk) a nézetet a haladási irány felé "előretoljuk"
+// képernyő-pixel alapon (így kelet/nyugat/dél irányban is jól működik).
 let targetLat = filteredMyLocation.lat;
 let targetLng = filteredMyLocation.lng;
-
-if (navMode === "heading" && isFinite(speed) && speed >= 0.8 && isFinite(lastHeadingDeg)) {
-  const z = map.getZoom();
-  const aheadM = (z >= 18) ? 55 : (z >= 17) ? 75 : (z >= 16) ? 95 : 125;
-  const o = offsetLatLng(filteredMyLocation.lat, filteredMyLocation.lng, lastHeadingDeg, aheadM);
-  targetLat = o[0]; targetLng = o[1];
-}
 
 	map.panTo([targetLat, targetLng], {
             animate: true,
             duration: GPS_CENTER_ANIM_S,
             easeLinearity: 0.25,
           });
-	// v5.42: heading módban tegyük a saját helyet "alsóbb" pozícióba (akkor is, ha épp nincs speed)
-	if (navMode === "heading") {
+	// "look-ahead" csak mozgás közben
+	if (navMode === "lite" && isFinite(speed) && speed >= 0.8 && isFinite(lastHeadingDeg)) {
 	  try {
-	    map.panBy([0, navYOffsetPx()], { animate: true, duration: Math.min(0.45, GPS_CENTER_ANIM_S) });
+	    const px = navYOffsetPx();
+	    const rad = lastHeadingDeg * Math.PI / 180;
+	    const dx = -Math.sin(rad) * px;
+	    const dy = Math.cos(rad) * px;
+	    map.panBy([dx, dy], { animate: true, duration: Math.min(0.45, GPS_CENTER_ANIM_S) });
 	  } catch (_) {}
 	}
         }
@@ -1866,20 +1877,20 @@ if (btnMyLocFab) {
 
   
 
-// v5.41: Navigáció mód váltó gomb (észak felül / haladási irány)
+// v5.41: Navigáció mód váltó gomb (észak felül / haladási irány – kompromisszumos "lite")
 const navBtn = document.getElementById("btnNavMode");
 if (navBtn) {
   const syncNavBtn = () => {
-    const isHeading = (navMode === "heading");
-    navBtn.classList.toggle("nav-heading", isHeading);
-    navBtn.title = isHeading ? "Navigáció: haladási irány" : "Navigáció: észak felül";
+    const isLite = (navMode === "lite");
+    navBtn.classList.toggle("nav-heading", isLite);
+    navBtn.title = isLite ? "Navigáció: haladási irány (lite)" : "Navigáció: észak felül";
     navBtn.setAttribute("aria-label", navBtn.title);
   };
   syncNavBtn();
 
 
   navBtn.addEventListener("click", async () => {
-    navMode = (navMode === "heading") ? "north" : "heading";
+    navMode = (navMode === "lite") ? "north" : "lite";
     localStorage.setItem("citymap_nav_mode", navMode);
     syncNavBtn();
 

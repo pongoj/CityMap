@@ -1,4 +1,10 @@
-const APP_VERSION = "5.51";
+const APP_VERSION = "5.52";
+
+// v5.52: alaptérkép választó (ingyenes, API-key nélkül)
+// Megjegyzés: publikus tile szervereket kímélni kell (heavy use → saját tile szerver).
+const BASEMAP_STORAGE_KEY = "citymap_basemap";
+const BASEMAP_DEFAULT_ID = "topo"; // "osm" | "topo"
+
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1792,11 +1798,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   await checkGeolocationPermissionOnStartup();
 
   map = L.map("map");
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+  // v5.52: alaptérkép választó (OSM / OpenTopoMap - API key nélkül)
+  const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxNativeZoom: 19,
     maxZoom: 22,
-    attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  });
+
+  const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    maxNativeZoom: 17,
+    maxZoom: 22,
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
+  });
+
+  const basemaps = {
+    osm: { name: "OSM (alap)", layer: osmLayer },
+    topo: { name: "Topo (OpenTopoMap)", layer: topoLayer }
+  };
+
+  let basemapId = localStorage.getItem(BASEMAP_STORAGE_KEY);
+  if (!basemaps[basemapId]) basemapId = BASEMAP_DEFAULT_ID;
+  basemaps[basemapId].layer.addTo(map);
+
+  const baseLayersUI = {};
+  for (const k in basemaps) baseLayersUI[basemaps[k].name] = basemaps[k].layer;
+  L.control.layers(baseLayersUI, null, { position: "topright" }).addTo(map);
+
+  map.on("baselayerchange", (e) => {
+    for (const k in basemaps) {
+      if (basemaps[k].layer === e.layer) {
+        localStorage.setItem(BASEMAP_STORAGE_KEY, k);
+        break;
+      }
+    }
+  });
 
   // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
   initRotateWrapperIfNeeded();

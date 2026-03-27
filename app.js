@@ -1,4 +1,4 @@
-const APP_VERSION = "5.51.2";
+const APP_VERSION = "5.51.3";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -1672,8 +1672,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
 
-  // v5.42.2: térkép forgatás wrapper + iránytű indítás (ha elérhető)
-  initRotateWrapperIfNeeded();
+  // v5.42.2: iránytű indítás (ha elérhető)
   startCompassIfPossible();
   scheduleApplyNavBearing();
 

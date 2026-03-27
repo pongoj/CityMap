@@ -1,4 +1,4 @@
-const APP_VERSION = "5.51.1";
+const APP_VERSION = "5.51.2";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -48,11 +48,7 @@ let map;
 let pendingLatLng = null;
 
 // Objektum módosítás (markerModal újrafelhasználása)
-let markerModalMode = "add";
-  const tb = document.getElementById('fTypeBtn'); if (tb) tb.disabled = false;
-  const sb = document.getElementById('fStatusBtn'); if (sb) sb.disabled = false;
-  setPickerValue('type', null);
-  setPickerValue('status', null); // "add" | "edit"
+let markerModalMode = "add"; // "add" | "edit"
 let editingMarkerId = null;
 let editingMarkerUuid = null;
 
@@ -585,164 +581,13 @@ function updateMyLocFabVisibility() {
   }
 }
 
-// v5.42.2: Leaflet térkép forgatás (régi "heading" mód)
-// Leaflet core-ban nincs natív map-rotation, ezért egy wrapper DIV-et teszünk a
-// leaflet-map-pane köré, és azt forgatjuk CSS transform-mal.
-// Megjegyzés: kattintás (marker felvétel) esetén a lat/lng-et korrigálni kell,
-// ezért a map click eseménynél rotatedClickLatLng() van használva.
-let rotateWrapper = null;
-let mapBearingDeg = 0; // CSS rotate (fok) a wrapperen
+// v5.51: Leaflet ág – nincs térképforgatás (heading-up).
+// A régi "heading" (térkép forgatós) kódot kiszedtük, mert a kompromisszumos "lite"
+// mód csak a saját hely nyilat forgatja és a nézetet tolja előre.
+// Kompatibilitásból meghagyjuk a hookokat, mert több helyről hívjuk őket.
+function scheduleApplyNavBearing(){ /* no-op (no map rotation) */ }
 
-function initRotateWrapperIfNeeded(){
-  try {
-    if (!map || !map.getContainer) return;
-    const container = map.getContainer();
-    if (!container) return;
-    const mapPane = container.querySelector(".leaflet-map-pane");
-    if (!mapPane) return;
-
-    // már be van csomagolva?
-    if (mapPane.parentElement && mapPane.parentElement.classList && mapPane.parentElement.classList.contains("leaflet-rotate-wrapper")) {
-      rotateWrapper = mapPane.parentElement;
-      return;
-    }
-
-    const w = document.createElement("div");
-    w.className = "leaflet-rotate-wrapper";
-    w.style.position = "absolute";
-    w.style.top = "0";
-    w.style.left = "0";
-    w.style.width = "100%";
-    w.style.height = "100%";
-    w.style.transformOrigin = "50% 50%";
-    w.style.willChange = "transform";
-
-    container.insertBefore(w, mapPane);
-    w.appendChild(mapPane);
-    rotateWrapper = w;
-  } catch (e) {
-    console.warn("rotate wrapper init failed", e);
-  }
-}
-
-function setMapBearingDeg(targetDeg){
-  // DEPRECATED (v5.42.3): a tényleges forgatást egy időalapú animátor végzi
-  // a mapBearingTargetDeg felé, hogy a kompasz zaját kisimítsuk.
-  try { setMapBearingTargetDeg(targetDeg); } catch (_) {}
-}
-
-let mapBearingTargetDeg = 0;
-let _bearingAnimRaf = null;
-let _bearingAnimLastTs = 0;
-
-function setMapBearingTargetDeg(targetDeg){
-  mapBearingTargetDeg = _normDeg(targetDeg);
-  startBearingAnimator();
-}
-
-function stopBearingAnimatorIfIdle(){
-  if (_bearingAnimRaf && navMode !== "heading" && Math.abs(shortestAngleDelta(mapBearingDeg, 0)) < 0.15) {
-    try { cancelAnimationFrame(_bearingAnimRaf); } catch (_) {}
-    _bearingAnimRaf = null;
-  }
-}
-
-function startBearingAnimator(){
-  try {
-    initRotateWrapperIfNeeded();
-    if (!rotateWrapper) return;
-
-    if (_bearingAnimRaf) return;
-    _bearingAnimLastTs = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-
-    const tick = () => {
-      _bearingAnimRaf = requestAnimationFrame(tick);
-
-      if (!rotateWrapper) {
-        initRotateWrapperIfNeeded();
-        if (!rotateWrapper) return;
-      }
-
-      const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-      const dt = Math.min(0.05, Math.max(0.001, (now - _bearingAnimLastTs) / 1000));
-      _bearingAnimLastTs = now;
-
-      const delta = shortestAngleDelta(mapBearingDeg, mapBearingTargetDeg);
-      const absd = Math.abs(delta);
-
-      // deadband: a nagyon kicsi kompasz "remegést" ignoráljuk
-      const dead = 0.35; // fok
-      if (absd < dead) {
-        mapBearingDeg = mapBearingTargetDeg;
-        rotateWrapper.style.transform = `rotate(${mapBearingDeg}deg)`;
-        stopBearingAnimatorIfIdle();
-        return;
-      }
-
-      // max forgási sebesség (deg/sec) + extra csillapítás kis delta esetén
-      const maxRate = 200;
-      const maxStep = maxRate * dt;
-      let stepDeg = clamp(delta, -maxStep, maxStep);
-
-      const damp = absd > 35 ? 1.0 : absd > 15 ? 0.75 : 0.45;
-      stepDeg *= damp;
-
-      mapBearingDeg = _normDeg(mapBearingDeg + stepDeg);
-      rotateWrapper.style.transform = `rotate(${mapBearingDeg}deg)`;
-    };
-
-    _bearingAnimRaf = requestAnimationFrame(tick);
-  } catch (_) {}
-}
-
-let _navBearingRaf = null;
-function scheduleApplyNavBearing(){
-  // v5.51: kompromisszumos navigáció – a térkép NEM forog.
-  // A gombos "haladási irány" csak a saját hely nyilat forgatja + előrenéz.
-  // Ha régi verzióból maradna animátor/wrapper, kényszerítsük 0-ra és állítsuk le.
-  try {
-    // Normál esetben (új verzióban) sosem indul el forgatás: ilyenkor azonnal kilépünk.
-    if (!_bearingAnimRaf && !rotateWrapper && mapBearingDeg === 0 && mapBearingTargetDeg === 0) return;
-
-    if (_navBearingRaf) return;
-    _navBearingRaf = requestAnimationFrame(() => {
-      _navBearingRaf = null;
-
-      mapBearingTargetDeg = 0;
-      mapBearingDeg = 0;
-
-      if (_bearingAnimRaf) {
-        try { cancelAnimationFrame(_bearingAnimRaf); } catch (_) {}
-        _bearingAnimRaf = null;
-      }
-      if (rotateWrapper) {
-        try { rotateWrapper.style.transform = "rotate(0deg)"; } catch (_) {}
-      }
-    });
-  } catch (_) {}
-}
-
-function rotatedClickLatLng(e){
-  try {
-    if (!map || !rotateWrapper) return e.latlng;
-    if (navMode !== "heading") return e.latlng;
-    if (!e || !e.originalEvent) return e.latlng;
-
-    const cp = map.mouseEventToContainerPoint(e.originalEvent);
-    const sz = map.getSize();
-    const cx = sz.x / 2;
-    const cy = sz.y / 2;
-    const dx = cp.x - cx;
-    const dy = cp.y - cy;
-    const rad = (-mapBearingDeg) * Math.PI / 180;
-    const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
-    const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
-    const p2 = L.point(cx + rx, cy + ry);
-    return map.containerPointToLatLng(p2);
-  } catch (_) {
-    return e.latlng;
-  }
-}
+function rotatedClickLatLng(e){ return e.latlng; }
 
 // Saját hely nyíl iránya (0..360). Ha a böngésző ad heading-et, azt használjuk,
 // különben két GPS pontból számolunk irányt (ha van elmozdulás).
@@ -827,7 +672,7 @@ function _handleDeviceOrientation(e){
   // v5.42.3: adaptív (időalapú) simítás + deadband + outlier szűrés,
 // hogy állva se "rezegjen", de forgásra gyorsan reagáljon.
   const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-  const dt = Math.min(0.08, Math.max(0.005, _compassLastTs ? (now - _compassLastTs) / 1000 : 0.02));
+        const dt = Math.min(0.08, Math.max(0.005, _compassLastTs ? (now - _compassLastTs) / 1000 : 0.02));
   _compassLastTs = now;
 
   if (!isFinite(compassHeadingDeg)) {
@@ -1014,7 +859,7 @@ function animateMarkerTo(marker, toLat, toLng, durationMs = GPS_MARKER_ANIM_MS) 
   const to = { lat: toLat, lng: toLng };
 
   // ha nagyon közel van, inkább csak tegyük át
-  const d = distanceMeters(from.lat, from.lng, to.lat, to.lng);
+        const d = distanceMeters(from.lat, from.lng, to.lat, to.lng);
   if (d < 0.5) {
     marker.setLatLng([to.lat, to.lng]);
     return;
@@ -1088,13 +933,15 @@ function startMyLocationWatch() {
 
       const nowTs = Date.now();
 
+      const prevRaw = lastRawMyLocation;
+
       // Heading források:
       // - mozgás közben: geolocation heading (ha van)
       // - állva/forgás közben: iránytű (DeviceOrientation)
       let speedHint = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
-      if (!isFinite(speedHint) && lastRawMyLocation) {
-        const dtH = Math.max(0.001, (nowTs - lastRawMyLocation.ts) / 1000);
-        const dH = distanceMeters(latRaw, lngRaw, lastRawMyLocation.lat, lastRawMyLocation.lng);
+      if (!isFinite(speedHint) && prevRaw) {
+        const dtH = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
+        const dH = distanceMeters(latRaw, lngRaw, prevRaw.lat, prevRaw.lng);
         speedHint = dH / dtH;
       }
 
@@ -1150,17 +997,17 @@ function startMyLocationWatch() {
       }
 
       // Sebesség becslés (ha nincs pos.coords.speed)
-      let speed = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
-      if (!isFinite(speed) && lastRawMyLocation) {
-        const dt = Math.max(0.001, (nowTs - lastRawMyLocation.ts) / 1000);
-        const d = distanceMeters(latRaw, lngRaw, lastRawMyLocation.lat, lastRawMyLocation.lng);
+      let speed = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : speedHint;
+      if (!isFinite(speed) && prevRaw) {
+        const dt = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
+        const d = distanceMeters(latRaw, lngRaw, prevRaw.lat, prevRaw.lng);
         speed = d / dt;
       }
 
       // Ugrás szűrés: ha irreálisan nagy az ugrás rövid idő alatt, eldobjuk.
-      if (lastRawMyLocation) {
-        const dt = Math.max(0.001, (nowTs - lastRawMyLocation.ts) / 1000);
-        const d = distanceMeters(latRaw, lngRaw, lastRawMyLocation.lat, lastRawMyLocation.lng);
+      if (prevRaw) {
+        const dt = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
+        const d = distanceMeters(latRaw, lngRaw, prevRaw.lat, prevRaw.lng);
         const impliedSpeed = d / dt;
         if (d > GPS_JUMP_REJECT_M && impliedSpeed > 40) {
           // pl. 120m ugrás 1-2 mp alatt
@@ -1932,6 +1779,23 @@ if (navBtn) {
     try {
       await centerToMyLocation();
     } catch (_) {}
+
+    // Azonnali vizuális váltás: ha van friss pozíciónk, a kiválasztott mód szerint
+    // állítsuk be a követés cél-centerét (lite módban előretolás).
+    try {
+      if (map && lastMyLocation) {
+        const sp = (typeof lastSpeedMps === "number" && isFinite(lastSpeedMps)) ? lastSpeedMps : NaN;
+        const accM = (lastRawMyLocation && typeof lastRawMyLocation.acc === "number") ? lastRawMyLocation.acc : 999999;
+        const desired = desiredFollowCenter(lastMyLocation.lat, lastMyLocation.lng, sp, accM);
+        lastMyLocCenterTs = Date.now();
+        map.panTo([desired.lat, desired.lng], {
+          animate: true,
+          duration: GPS_CENTER_ANIM_S,
+          easeLinearity: 0.25,
+        });
+      }
+    } catch (_) {}
+
 
     // Forgatás/irány alkalmazása a kiválasztott navigáció mód szerint
     scheduleApplyNavBearing();

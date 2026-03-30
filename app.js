@@ -1,4 +1,4 @@
-const APP_VERSION = "5.51.3";
+const APP_VERSION = "5.51.4";
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -498,19 +498,50 @@ let myLocFollowEnabled = true;
 // - "north": észak felül, középre követ
 // - "lite": haladási irány (kompromisszum): a térkép NEM forog, csak a nyíl + "előrenézős" követés
 let navMode = (() => {
-  const raw = (localStorage.getItem("citymap_nav_mode") || "north");
+  let raw = "north";
+  try {
+    raw = (localStorage.getItem("citymap_nav_mode") || "north");
+  } catch (_) {
+    raw = "north";
+  }
   // v5.51: migráció – a régi "heading" (térkép forgatós) mód helyett a stabil "lite" módot használjuk.
-  return (raw === "heading") ? "lite" : raw;
+  raw = (raw === "heading") ? "lite" : raw;
+  // csak ismert értékeket engedünk
+  return (raw === "lite") ? "lite" : "north";
 })(); // "north" | "lite"
 
 // v5.42: "lite" módban a saját helyet kissé lejjebb tartjuk (előrenézés érzet)
 function navYOffsetPx() {
   try {
     const h = map && map.getSize ? map.getSize().y : 0;
-    const px = Math.round(h * 0.18);
-    return clamp(px, 60, 160);
+    // v5.51.4: nagyobb, jobban érezhető előrenézés (és arányos képernyőmérettel)
+    const px = Math.round(h * 0.24);
+    return clamp(px, 90, 240);
   } catch (_) {
-    return 90;
+    return 140;
+  }
+}
+
+// v5.51.4: lite mód pixel-eltolás számítás (a marker képernyőn előre tolása)
+function navDeltaPx(speedMps, accM) {
+  try {
+    if (navMode !== "lite") return { active:false, dx:0, dy:0, px:0 };
+    if (!isFinite(speedMps)) speedMps = 0;
+    // kis sebességnél ne legyen agresszív (állva ne mászkáljon)
+    if (speedMps < 0.6) return { active:false, dx:0, dy:0, px:0 };
+    if (!isFinite(lastHeadingDeg)) return { active:false, dx:0, dy:0, px:0 };
+
+    let px = navYOffsetPx();
+    // sebességfüggő skálázás (lassan kisebb, gyorsabban teljes)
+    const k = clamp(speedMps / 6, 0.55, 1.0);
+    px = Math.round(px * k);
+
+    const rad = lastHeadingDeg * Math.PI / 180;
+    const dx = -Math.sin(rad) * px;
+    const dy =  Math.cos(rad) * px;
+    return { active:true, dx, dy, px };
+  } catch (_) {
+    return { active:false, dx:0, dy:0, px:0 };
   }
 }
 
@@ -521,22 +552,15 @@ function desiredFollowCenter(lat, lng, speedMps, accM) {
   let cLat = lat, cLng = lng;
   try {
     if (!map) return { lat: cLat, lng: cLng };
-    if (navMode !== "lite") return { lat: cLat, lng: cLng };
-    if (!(isFinite(speedMps) && speedMps >= 0.8 && isFinite(lastHeadingDeg))) return { lat: cLat, lng: cLng };
 
-    // pixel offset (sebességfüggő csillapítással, hogy lassan ne legyen túl agresszív)
-    let px = navYOffsetPx();
-    const k = clamp(speedMps / 8, 0.4, 1.0);
-    px = Math.round(px * k);
+    const dpx = navDeltaPx(speedMps, accM);
+    if (!dpx.active) return { lat: cLat, lng: cLng };
 
     const z = map.getZoom ? map.getZoom() : 18;
     const p0 = map.project([lat, lng], z);
-    const rad = lastHeadingDeg * Math.PI / 180;
-    const dx = -Math.sin(rad) * px;
-    const dy =  Math.cos(rad) * px;
 
-    // A center a pozícióhoz képest 'előre' tolódik: world pixelben ugyanaz a delta.
-    const pc = L.point(p0.x - dx, p0.y - dy);
+    // A center a pozícióhoz képest 'előre' tolódik: így a marker képernyőn a haladási irány mögé kerül.
+    const pc = L.point(p0.x - dpx.dx, p0.y - dpx.dy);
     const ll = map.unproject(pc, z);
     cLat = ll.lat;
     cLng = ll.lng;
@@ -1048,7 +1072,8 @@ function startMyLocationWatch() {
       // v5.51.1: a 'lite' előrenézés a map center célpontba van beépítve (nem panBy),
       // így nem csúszik szét a követés, és a 'Középre' gomb sem ragad be.
       if (myLocFollowEnabled) {
-        const canCenterByTime = (nowTs - lastMyLocCenterTs) >= GPS_MIN_CENTER_INTERVAL_MS;
+        const minInterval = (navMode === "lite" && isFinite(speed) && speed >= 0.7) ? 350 : GPS_MIN_CENTER_INTERVAL_MS;
+        const canCenterByTime = (nowTs - lastMyLocCenterTs) >= minInterval;
         let shouldCenter = false;
 
         const desired = desiredFollowCenter(filteredMyLocation.lat, filteredMyLocation.lng, speed, acc);
@@ -1057,20 +1082,46 @@ function startMyLocationWatch() {
         if (!centerNow || !isFinite(centerNow.lat) || !isFinite(centerNow.lng)) {
           shouldCenter = true;
         } else {
-          const dc = distanceMeters(desired.lat, desired.lng, centerNow.lat, centerNow.lng);
-          // dinamikus küszöb: jobb pontosságnál kisebb küszöb
-          const dynThreshold = clamp(Math.max(6, acc * 0.6), 6, 18);
-          if (dc >= dynThreshold) shouldCenter = true;
+          try {
+            const s = map.getSize();
+            const cx = s.x / 2;
+            const cy = s.y / 2;
+
+            const dpx = navDeltaPx(speed, acc);
+            const ax = cx + (dpx.active ? dpx.dx : 0);
+            const ay = cy + (dpx.active ? dpx.dy : 0);
+
+            const p = map.latLngToContainerPoint([filteredMyLocation.lat, filteredMyLocation.lng]);
+            const distPx = Math.hypot(p.x - ax, p.y - ay);
+
+            // pixeles holtzóna: így nem rángatjuk apró driftre, de lite módban stabilan érezhető marad az előrenézés
+            const threshPx = dpx.active ? 16 : 22;
+            if (distPx >= threshPx) shouldCenter = true;
+          } catch (_) {
+            // fallback: méter alapú küszöb
+            const dc = distanceMeters(desired.lat, desired.lng, centerNow.lat, centerNow.lng);
+            const dynThreshold = clamp(Math.max(6, acc * 0.6), 6, 18);
+            if (dc >= dynThreshold) shouldCenter = true;
+          }
         }
 
         if (shouldCenter && canCenterByTime) {
           lastMyLocCenterTs = nowTs;
           lastCenteredMyLocation = { lat: desired.lat, lng: desired.lng };
 
+          const fast = (isFinite(speed) && speed >= 6);
+          let dur = GPS_CENTER_ANIM_S;
+          if (isFinite(speed)) {
+            if (speed < 1.5) dur = 0.45;
+            else if (speed < 4) dur = 0.32;
+            else dur = 0.22;
+          }
+
           map.panTo([desired.lat, desired.lng], {
-            animate: true,
-            duration: GPS_CENTER_ANIM_S,
+            animate: !fast,
+            duration: dur,
             easeLinearity: 0.25,
+            noMoveStart: true,
           });
         }
       }
@@ -1149,8 +1200,14 @@ async function centerToMyLocation() {
   // If we already have a recent fix from watchPosition, use it immediately.
   if (lastMyLocation && Date.now() - lastMyLocation.ts < 60_000) {
     lastMyLocCenterTs = Date.now();
-    map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: true, duration: 0.6 });
-    lastCenteredMyLocation = { lat: lastMyLocation.lat, lng: lastMyLocation.lng };
+    {
+    const sp = (typeof lastSpeedMps === "number" && isFinite(lastSpeedMps)) ? lastSpeedMps : NaN;
+    const accM = (lastRawMyLocation && typeof lastRawMyLocation.acc === "number") ? lastRawMyLocation.acc : 999999;
+    const desired = desiredFollowCenter(lastMyLocation.lat, lastMyLocation.lng, sp, accM);
+    map.setView([desired.lat, desired.lng], 20, { animate: true, duration: 0.6 });
+    lastCenteredMyLocation = { lat: desired.lat, lng: desired.lng };
+  }
+    // lastCenteredMyLocation fentebb beállítva (lite módban előretolt centerrel)
     await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, false);
     startMyLocationWatch();
     return true;
@@ -1166,8 +1223,13 @@ async function centerToMyLocation() {
         lastMyLocation = { lat, lng, ts: Date.now() };
 
         lastMyLocCenterTs = Date.now();
-        map.setView([lat, lng], 20, { animate: true, duration: 0.6 });
-        lastCenteredMyLocation = { lat, lng };
+        {
+          const sp = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
+          const accM = (typeof pos.coords.accuracy === "number" && isFinite(pos.coords.accuracy)) ? pos.coords.accuracy : 999999;
+          const desired = desiredFollowCenter(lat, lng, sp, accM);
+          map.setView([desired.lat, desired.lng], 20, { animate: true, duration: 0.6 });
+          lastCenteredMyLocation = { lat: desired.lat, lng: desired.lng };
+        }
         await ensureMyLocationMarker(lat, lng, true);
 
         startMyLocationWatch();
@@ -1196,7 +1258,7 @@ async function centerToMyLocation() {
   if (!ok || !lastMyLocation) return false;
 
   map.setView([lastMyLocation.lat, lastMyLocation.lng], 20, { animate: true, duration: 0.6 });
-  lastCenteredMyLocation = { lat: lastMyLocation.lat, lng: lastMyLocation.lng };
+  // lastCenteredMyLocation fentebb beállítva (lite módban előretolt centerrel)
   await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, true);
   return true;
 }
@@ -1764,7 +1826,7 @@ if (navBtn) {
 
   navBtn.addEventListener("click", async () => {
     navMode = (navMode === "lite") ? "north" : "lite";
-    localStorage.setItem("citymap_nav_mode", navMode);
+    try { localStorage.setItem("citymap_nav_mode", navMode); } catch (_) {}
     syncNavBtn();
 
     // Mindkét mód váltáskor: követés bekapcsol és saját hely középre

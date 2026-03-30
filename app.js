@@ -1,4 +1,4 @@
-const APP_VERSION = "5.51.5";
+const APP_VERSION = "5.51.6";
 
 // Helymeghatározás mód kijelzése (v5.51.5):
 // G = GPS (high accuracy / jó pontosság), N = hálózati (internet alapú / gyenge pontosság)
@@ -1419,15 +1419,14 @@ function popupHtml(m) {
     <div><b>Állapot:</b> ${escapeHtml(m.statusLabel)}</div>
     <div><b>Megjegyzés:</b> ${m.notes ? escapeHtml(m.notes) : "-"}</div>
 
-    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btnPhotos" data-uuid="${m.uuid}" data-title="${idText(m.id)}">Fotók (<span id="pc-${m.uuid}">…</span>)</button>
-      ${isDeleted ? '<span style="color:#b91c1c;font-weight:700;">TÖRÖLT</span>' : ''}
-    </div>
-
-    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
-      <button data-edit="${m.id}" ${isDeleted ? 'disabled title="A törölt objektum nem módosítható"' : ''}>Módosítás</button>
-      <button data-move="${m.id}" ${isDeleted ? 'disabled title="A törölt objektum nem mozgatható"' : ''}>Mozgatás</button>
-      <button data-del="${m.id}">Törlés</button>
+    <div style="margin-top:10px">
+      <div class="cm-popup-btngrid" role="group" aria-label="Műveletek">
+        <button data-move="${m.id}" ${isDeleted ? 'disabled title="A törölt objektum nem mozgatható"' : ''}>Mozgatás</button>
+        <button class="btnPhotos" data-uuid="${m.uuid}" data-title="${idText(m.id)}">Fotók (<span id="pc-${m.uuid}">…</span>)</button>
+        <button data-edit="${m.id}" ${isDeleted ? 'disabled title="A törölt objektum nem módosítható"' : ''}>Módosítás</button>
+        <button data-del="${m.id}">Törlés</button>
+      </div>
+      ${isDeleted ? '<div class="cm-popup-deleted">TÖRÖLT</div>' : ''}
     </div>
   </div>`;
 }

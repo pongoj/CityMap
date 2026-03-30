@@ -141,6 +141,21 @@
       max-width: calc(100vw - 20px);
     }
 
+    /* Popup: művelet gombok 2x2 rácsban, azonos szélességgel */
+    .cm-popup-btngrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .cm-popup-btngrid button{ width:100%; }
+    .cm-popup-deleted{
+      margin-top: 8px;
+      color:#b91c1c;
+      font-weight:700;
+      text-align:right;
+    }
+
     /* Modal */
     .modal{
       position:fixed; inset:0; z-index:2000;

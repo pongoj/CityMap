@@ -1,4 +1,14 @@
-const APP_VERSION = "5.51.4";
+const APP_VERSION = "5.51.5";
+
+// Helymeghatározás mód kijelzése (v5.51.5):
+// G = GPS (high accuracy / jó pontosság), N = hálózati (internet alapú / gyenge pontosság)
+let locProviderMode = "?"; // "G" | "N" | "?"
+function updateAppVersionUI(){
+  const el = document.getElementById("appVersion");
+  if (!el) return;
+  el.textContent = `v${APP_VERSION} ${locProviderMode}`;
+}
+
 
 // Szűrés táblázat kijelölés (több sor is kijelölhető)
 let selectedFilterMarkerIds = new Set();
@@ -475,6 +485,13 @@ async function closeModal() {
 
 let myLocationMarker = null;
 let myLocationWatchId = null;
+
+// v5.51.5: geolocation preferálja a GPS-t (high accuracy), és csak hiba esetén
+// vált "low" (hálózati) módra.
+let geoWatchMode = "high"; // "high" | "low"
+let geoErrStreak = 0;
+let lastGeoModeSwitchTs = 0;
+
 let myLocationAddressText = "Saját hely";
 let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig követjük a pozíciót)
 
@@ -486,8 +503,9 @@ let lastMyLocCenterTs = 0; // (megtartva kompatibilitás miatt, de már mindig k
 // - animált marker mozgatás két mérés között
 // - követés ki/be: kézi térképmozgatás letiltja, "Saját helyem" gomb visszakapcsolja
 const GPS_ACCURACY_MAX_M = 60;      // efölött nem frissítünk (beltér/rossz jel)
+const GPS_ACCURACY_HARD_REJECT_M = 250; // efölött teljesen eldobjuk (nagyon rossz / hibás pozíció)
 const GPS_DEADZONE_MIN_M = 4;       // ennyi alatt (állva) ne mozduljon
-const GPS_DEADZONE_MAX_M = 10;      // deadzone felső korlát
+const GPS_DEADZONE_MAX_M = 14;      // deadzone felső korlát (v5.51.5: hálózati módban is stabilabb)
 const GPS_JUMP_REJECT_M = 120;      // irreális ugrás eldobása (ha túl gyors)
 const GPS_MARKER_ANIM_MS = 650;     // marker animáció időtartam
 const GPS_CENTER_ANIM_S = 0.55;     // térkép pan animáció
@@ -648,6 +666,42 @@ function _normDeg(d){
   d = (d % 360 + 360) % 360;
   return d;
 }
+
+// v5.51.5: egyes eszközök/böngészők 180 fokkal elforgatott heading-et adnak.
+// Menet közben a GPS mozgásirány (bearing) alapján automatikusan kalibráljuk a "flip"-et.
+let headingFlip180 = (() => {
+  try {
+    return (localStorage.getItem("citymap_heading_flip180") === "1");
+  } catch (_) {
+    return false;
+  }
+})();
+let _flipVotes = 0; // >0: flip felé, <0: no-flip felé
+function applyHeadingFlip(h){
+  if (!(typeof h === "number" && isFinite(h))) return h;
+  return _normDeg(h + (headingFlip180 ? 180 : 0));
+}
+function voteHeadingFlip(candidateDeg, moveBearingDeg){
+  // candidateDeg: a szenzor/geo által adott heading, moveBearingDeg: GPS mozgásirány
+  if (!(typeof candidateDeg === "number" && isFinite(candidateDeg))) return;
+  if (!(typeof moveBearingDeg === "number" && isFinite(moveBearingDeg))) return;
+  const d0 = Math.abs(shortestAngleDelta(candidateDeg, moveBearingDeg));
+  const d180 = Math.abs(shortestAngleDelta(_normDeg(candidateDeg + 180), moveBearingDeg));
+  // 15 fok hiszterézis
+  if (d180 + 15 < d0) _flipVotes = Math.min(6, _flipVotes + 1);
+  else if (d0 + 15 < d180) _flipVotes = Math.max(-6, _flipVotes - 1);
+
+  if (_flipVotes >= 3 && !headingFlip180) {
+    headingFlip180 = true;
+    _flipVotes = 0;
+    try { localStorage.setItem("citymap_heading_flip180", "1"); } catch (_) {}
+  } else if (_flipVotes <= -3 && headingFlip180) {
+    headingFlip180 = false;
+    _flipVotes = 0;
+    try { localStorage.setItem("citymap_heading_flip180", "0"); } catch (_) {}
+  }
+}
+
 
 function _getScreenAngle(){
   // 0, 90, 180, 270
@@ -854,6 +908,21 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
 
 function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
+function inferLocProviderMode(pos, accM){
+  try {
+    const sp = (pos && pos.coords && typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
+    const hd = (pos && pos.coords && typeof pos.coords.heading === "number" && isFinite(pos.coords.heading)) ? pos.coords.heading : NaN;
+    const hasMotion = isFinite(sp) || isFinite(hd);
+    if (typeof accM !== "number" || !isFinite(accM)) accM = 999999;
+    // Tipikus: GPS 5-30m, hálózat 80m+ (nem garantált, ezért több jelből döntünk)
+    if (accM <= 65) return "G";
+    if (accM <= 90 && hasMotion) return "G";
+    return "N";
+  } catch (_) {
+    return "?";
+  }
+}
+
 function pickAlpha(speedMps, accM) {
   // lassú mozgásnál erősebb simítás; gyorsnál kisebb lag.
   let a;
@@ -937,15 +1006,43 @@ if (!myLocationMarker) {
   }
 }
 
-function startMyLocationWatch() {
+function restartMyLocationWatch(mode){
+  try {
+    if (myLocationWatchId !== null) navigator.geolocation.clearWatch(myLocationWatchId);
+  } catch (_) {}
+  myLocationWatchId = null;
+  startMyLocationWatch(mode);
+}
+
+function startMyLocationWatch(mode = "high") {
   if (!navigator.geolocation) return;
   if (myLocationWatchId !== null) return;
+
+  geoWatchMode = (mode === "low") ? "low" : "high";
+  // induláskor / váltáskor frissítsük a verzió melletti jelzést (ha még nincs fix)
+  try { updateAppVersionUI(); } catch (_) {}
+
 
   myLocationWatchId = navigator.geolocation.watchPosition(
     async (pos) => {
       const latRaw = pos.coords.latitude;
       const lngRaw = pos.coords.longitude;
       const acc = typeof pos.coords.accuracy === "number" ? pos.coords.accuracy : 999999;
+
+      // v5.51.5: helymeghatározás mód becslése + kijelzés (G/N)
+      try {
+        locProviderMode = inferLocProviderMode(pos, acc);
+        updateAppVersionUI();
+      } catch (_) {}
+
+      // Ha low módban vagyunk, de közben megjött a jó GPS (G), váltsunk vissza high-ra.
+      try {
+        if (geoWatchMode === "low" && locProviderMode === "G" && (Date.now() - lastGeoModeSwitchTs) > 30000) {
+          lastGeoModeSwitchTs = Date.now();
+          restartMyLocationWatch("high");
+          return;
+        }
+      } catch (_) {}
 
       // Release any waiters that are waiting for first position fix
       if (myLocWaiters.size) {
@@ -957,65 +1054,81 @@ function startMyLocationWatch() {
 
       const nowTs = Date.now();
 
-      const prevRaw = lastRawMyLocation;
+      geoErrStreak = 0;
 
+      const prevRaw = lastRawMyLocation;
       // Heading források:
-      // - mozgás közben: geolocation heading (ha van)
+      // - menet közben: GPS mozgásirány (bearing) a legstabilabb (kompasz nélkül, nincs 180° fordulás)
+      // - ha nincs elég mozgás: geolocation heading (ha van)
       // - állva/forgás közben: iránytű (DeviceOrientation)
+
       let speedHint = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
-      if (!isFinite(speedHint) && prevRaw) {
-        const dtH = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
-        const dH = distanceMeters(latRaw, lngRaw, prevRaw.lat, prevRaw.lng);
-        speedHint = dH / dtH;
+
+      // Mozgásból számolt irány (bearing) + sebesség (raw GPS pontokból).
+      let moveBearing = NaN;
+      let moveSpeed = NaN;
+      if (prevRaw) {
+        const dtMove = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
+        const dMove = distanceMeters(prevRaw.lat, prevRaw.lng, latRaw, lngRaw);
+        moveSpeed = dMove / dtMove;
+        // Autóban jellemzően 10m+ mozgás kell a stabil bearing-hez
+        if (dMove >= 10 && dtMove <= 10) {
+          moveBearing = bearingDeg(prevRaw.lat, prevRaw.lng, latRaw, lngRaw);
+        }
+        if (!isFinite(speedHint)) speedHint = moveSpeed;
       }
 
       // v5.42.4: sebesség hint mentése (mozgás közben ne írja felül a gyro/kompasz a heading-et)
-      lastSpeedMps = speedHint;
+      const speedBest = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed
+        : (isFinite(speedHint) ? speedHint : moveSpeed);
+      lastSpeedMps = speedBest;
       lastSpeedTs = nowTs;
 
-      const geoHeadingOk = (typeof pos.coords.heading === "number" && isFinite(pos.coords.heading) && isFinite(speedHint) && speedHint >= 1.2 && acc <= 50);
-      const hGeo = geoHeadingOk ? _normDeg(pos.coords.heading) : NaN;
+      // Geolocation heading (ha van). Sok böngésző csak GPS módban adja.
+      const geoHeadingOk = (typeof pos.coords.heading === "number" && isFinite(pos.coords.heading) && isFinite(speedBest) && speedBest >= 1.2 && acc <= 120);
+      const hGeoRaw = geoHeadingOk ? _normDeg(pos.coords.heading) : NaN;
 
       // Iránytű heading-et a deviceorientation event frissíti (compassHeadingDeg).
-      const hCompass = (typeof compassHeadingDeg === "number" && isFinite(compassHeadingDeg)) ? _normDeg(compassHeadingDeg) : NaN;
+      const hCompassRaw = (typeof compassHeadingDeg === "number" && isFinite(compassHeadingDeg)) ? _normDeg(compassHeadingDeg) : NaN;
 
-      if (isFinite(hGeo)) {
-        lastHeadingDeg = hGeo;
-        _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
-      } else if (isFinite(hCompass)) {
-        // állva/forgás közben is működjön (gyro+kompasz fúzióval simábban)
-        const hFused = (typeof fusedHeadingDeg === 'number' && isFinite(fusedHeadingDeg)) ? _normDeg(fusedHeadingDeg) : hCompass;
-        lastHeadingDeg = hFused;
-        // _prevHeadingRaw-t csak bázisnak frissítjük
-        if (!_prevHeadingRaw) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
-      } else if (_prevHeadingRaw) {
-        // fallback: két GPS pontból bearing
-        const dHead = distanceMeters(latRaw, lngRaw, _prevHeadingRaw.lat, _prevHeadingRaw.lng);
-        const dtHead = (nowTs - _prevHeadingRaw.ts) / 1000;
-        const minMoveForHeading = (isFinite(speedHint) && speedHint >= 1.2)
-          ? 3
-          : clamp(Math.max(10, acc * 0.9), 10, 30);
-
-        if (dHead >= minMoveForHeading && dtHead <= 8) {
-          const rawBear = bearingDeg(_prevHeadingRaw.lat, _prevHeadingRaw.lng, latRaw, lngRaw);
-          if (!isFinite(lastHeadingDeg)) lastHeadingDeg = rawBear;
-          else {
-            const delta = shortestAngleDelta(lastHeadingDeg, rawBear);
-            if (Math.abs(delta) >= 8) lastHeadingDeg = _normDeg(lastHeadingDeg + delta * 0.35);
-          }
-          _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
-        } else if (dtHead > 8) {
-          _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
-        }
-      } else {
-        _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+      // v5.51.5: 180° flip auto-kalibráció (ha a szenzor/geo heading fordítva jön).
+      if (isFinite(moveBearing) && isFinite(moveSpeed) && moveSpeed >= 2.0 && acc <= 90) {
+        if (isFinite(hGeoRaw)) voteHeadingFlip(hGeoRaw, moveBearing);
+        if (isFinite(hCompassRaw)) voteHeadingFlip(hCompassRaw, moveBearing);
       }
+
+      // Heading választás: mozgásirány az első (autóban a legjobb).
+      let chosenHeading = NaN;
+      if (isFinite(moveBearing) && isFinite(moveSpeed) && moveSpeed >= 1.4 && acc <= 120) {
+        chosenHeading = moveBearing;
+      } else if (isFinite(hGeoRaw)) {
+        chosenHeading = applyHeadingFlip(hGeoRaw);
+      } else if (isFinite(hCompassRaw)) {
+        const hFused = (typeof fusedHeadingDeg === "number" && isFinite(fusedHeadingDeg)) ? _normDeg(fusedHeadingDeg) : hCompassRaw;
+        chosenHeading = applyHeadingFlip(hFused);
+      }
+
+      if (isFinite(chosenHeading)) {
+        if (!isFinite(lastHeadingDeg)) lastHeadingDeg = chosenHeading;
+        else {
+          const delta = shortestAngleDelta(lastHeadingDeg, chosenHeading);
+          const absd = Math.abs(delta);
+          // nagy fordulásra gyorsabb, egyenesben stabilabb
+          const k = (absd > 60) ? 0.45 : (absd > 20 ? 0.30 : 0.22);
+          lastHeadingDeg = _normDeg(lastHeadingDeg + delta * k);
+        }
+        _updateMyLocIconHeading();
+      }
+
+      // fallback bázis frissítés
+      if (!_prevHeadingRaw) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+      else if (!prevRaw || (nowTs - _prevHeadingRaw.ts) > 8000) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
 
 
       scheduleApplyNavBearing();
 
       // Nagyon rossz pontosságnál inkább ne frissítsünk (ugrálás/beltér).
-      if (acc > GPS_ACCURACY_MAX_M) {
+      if (acc > GPS_ACCURACY_HARD_REJECT_M) {
         lastRawMyLocation = { lat: latRaw, lng: lngRaw, ts: nowTs, acc };
         return;
       }
@@ -1072,7 +1185,8 @@ function startMyLocationWatch() {
       // v5.51.1: a 'lite' előrenézés a map center célpontba van beépítve (nem panBy),
       // így nem csúszik szét a követés, és a 'Középre' gomb sem ragad be.
       if (myLocFollowEnabled) {
-        const minInterval = (navMode === "lite" && isFinite(speed) && speed >= 0.7) ? 350 : GPS_MIN_CENTER_INTERVAL_MS;
+        const lowQ = (typeof acc === "number" && isFinite(acc) && acc > 90);
+        const minInterval = lowQ ? 1100 : ((navMode === "lite" && isFinite(speed) && speed >= 0.7) ? 350 : GPS_MIN_CENTER_INTERVAL_MS);
         const canCenterByTime = (nowTs - lastMyLocCenterTs) >= minInterval;
         let shouldCenter = false;
 
@@ -1095,7 +1209,7 @@ function startMyLocationWatch() {
             const distPx = Math.hypot(p.x - ax, p.y - ay);
 
             // pixeles holtzóna: így nem rángatjuk apró driftre, de lite módban stabilan érezhető marad az előrenézés
-            const threshPx = dpx.active ? 16 : 22;
+            const threshPx = dpx.active ? (lowQ ? 28 : 16) : (lowQ ? 32 : 22);
             if (distPx >= threshPx) shouldCenter = true;
           } catch (_) {
             // fallback: méter alapú küszöb
@@ -1118,8 +1232,8 @@ function startMyLocationWatch() {
           }
 
           map.panTo([desired.lat, desired.lng], {
-            animate: !fast,
-            duration: dur,
+            animate: (!fast && !lowQ),
+            duration: lowQ ? 0.0 : dur,
             easeLinearity: 0.25,
             noMoveStart: true,
           });
@@ -1147,9 +1261,31 @@ function startMyLocationWatch() {
         }
         myLocWaiters.clear();
       }
+
+      // v5.51.5: újrapróbálkozás + fallback (GPS -> hálózat), ha nincs GPS jel / timeout.
+      try {
+        if (err && err.code === 1) {
+          // Permission denied: ne próbálkozzunk újra.
+          return;
+        }
+        geoErrStreak = (geoErrStreak || 0) + 1;
+        const now = Date.now();
+        const canSwitch = (now - lastGeoModeSwitchTs) > 15000;
+
+        if (geoWatchMode === "high" && geoErrStreak >= 2 && canSwitch) {
+          lastGeoModeSwitchTs = now;
+          restartMyLocationWatch("low");
+          return;
+        }
+
+        // Maradunk ugyanabban a módban, rövid késleltetéssel újraindítjuk.
+        setTimeout(() => {
+          try { startMyLocationWatch(geoWatchMode); } catch (_) {}
+        }, 1200);
+      } catch (_) {}
     },
     {
-      enableHighAccuracy: true,
+      enableHighAccuracy: (geoWatchMode === "high"),
       maximumAge: 0,
       timeout: 10000,
     }
@@ -1221,6 +1357,12 @@ async function centerToMyLocation() {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         lastMyLocation = { lat, lng, ts: Date.now() };
+
+        try {
+          const accM0 = (typeof pos.coords.accuracy === "number" && isFinite(pos.coords.accuracy)) ? pos.coords.accuracy : 999999;
+          locProviderMode = inferLocProviderMode(pos, accM0);
+          updateAppVersionUI();
+        } catch (_) {}
 
         lastMyLocCenterTs = Date.now();
         {
@@ -1719,7 +1861,7 @@ function registerSW() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("online", checkForUpdateOnline);
-  document.getElementById("appVersion").textContent = "v" + APP_VERSION;
+  updateAppVersionUI();
   registerSW();
   checkForUpdateOnline();
 

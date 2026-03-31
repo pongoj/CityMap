@@ -1,4 +1,4 @@
-const APP_VERSION = "5.51.6";
+const APP_VERSION = "5.51.7";
 
 // Helymeghatározás mód kijelzése (v5.51.5):
 // G = GPS (high accuracy / jó pontosság), N = hálózati (internet alapú / gyenge pontosság)
@@ -528,6 +528,14 @@ let navMode = (() => {
   return (raw === "lite") ? "lite" : "north";
 })(); // "north" | "lite"
 
+// v5.51.7: nav mód váltáskor rövid ideig (néhány mp) engedjük a lite eltolást akkor is,
+// ha a sebesség bizonytalan. Ez segít vizuálisan azonnal látni, hogy átváltottunk.
+let navForceUntilTs = 0;
+
+// v5.51.7: a "lite" mód eltolásához a HALADÁSI IRÁNYT (mozgás bearing) használjuk,
+// nem a kompaszt. Így autóban stabil és nem fordul 180°-kal.
+let lastNavBearingDeg = NaN;
+
 // v5.42: "lite" módban a saját helyet kissé lejjebb tartjuk (előrenézés érzet)
 function navYOffsetPx() {
   try {
@@ -544,17 +552,22 @@ function navYOffsetPx() {
 function navDeltaPx(speedMps, accM) {
   try {
     if (navMode !== "lite") return { active:false, dx:0, dy:0, px:0 };
+    const now = Date.now();
     if (!isFinite(speedMps)) speedMps = 0;
     // kis sebességnél ne legyen agresszív (állva ne mászkáljon)
-    if (speedMps < 0.6) return { active:false, dx:0, dy:0, px:0 };
-    if (!isFinite(lastHeadingDeg)) return { active:false, dx:0, dy:0, px:0 };
+    if (speedMps < 0.6 && now > navForceUntilTs) return { active:false, dx:0, dy:0, px:0 };
+    // nagyon kis sebességnél (tényleg állunk) ne toljon el, még force esetén se
+    if (speedMps < 0.25) return { active:false, dx:0, dy:0, px:0 };
+
+    const hdg = (typeof lastNavBearingDeg === "number" && isFinite(lastNavBearingDeg)) ? lastNavBearingDeg : lastHeadingDeg;
+    if (!(typeof hdg === "number" && isFinite(hdg))) return { active:false, dx:0, dy:0, px:0 };
 
     let px = navYOffsetPx();
     // sebességfüggő skálázás (lassan kisebb, gyorsabban teljes)
     const k = clamp(speedMps / 6, 0.55, 1.0);
     px = Math.round(px * k);
 
-    const rad = lastHeadingDeg * Math.PI / 180;
+    const rad = hdg * Math.PI / 180;
     const dx = -Math.sin(rad) * px;
     const dy =  Math.cos(rad) * px;
     return { active:true, dx, dy, px };
@@ -885,6 +898,9 @@ function startCompassIfPossible(){
   startMotionIfPossible();
 }
 
+// v5.51.7: "bearing anchor" a mozgásirány (haladási irány) stabil számításához.
+// Sok eszköz nagyon gyakran frissít (2-5m lépésekkel). Ha csak rövid bázison számolunk,
+// a bearing zajos/NaN lesz, és a nav-lite eltolás "nem látszik".
 let _prevHeadingRaw = null; // {lat,lng,ts}
  // induláskor bekapcsolva (Saját helyem gomb visszakapcsolja)
 
@@ -1064,19 +1080,47 @@ function startMyLocationWatch(mode = "high") {
 
       let speedHint = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed : NaN;
 
-      // Mozgásból számolt irány (bearing) + sebesség (raw GPS pontokból).
+      // Mozgásból számolt sebesség + irány (bearing) a raw GPS pontokból.
+      // v5.51.7: a bearing számításhoz hosszabb bázist használunk (anchor), mert sok eszköz
+      // 1-2 mp-enként frissít és egy-egy lépés csak pár méter → a régi 10m küszöb miatt
+      // gyakran NaN maradt, így a "haladási irány (lite)" nem tudott érdemben eltolni.
       let moveBearing = NaN;
       let moveSpeed = NaN;
       if (prevRaw) {
         const dtMove = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
         const dMove = distanceMeters(prevRaw.lat, prevRaw.lng, latRaw, lngRaw);
         moveSpeed = dMove / dtMove;
-        // Autóban jellemzően 10m+ mozgás kell a stabil bearing-hez
-        if (dMove >= 10 && dtMove <= 10) {
-          moveBearing = bearingDeg(prevRaw.lat, prevRaw.lng, latRaw, lngRaw);
-        }
         if (!isFinite(speedHint)) speedHint = moveSpeed;
       }
+
+      try {
+        const anchor = _prevHeadingRaw || prevRaw;
+        if (anchor) {
+          const dtA = Math.max(0.001, (nowTs - anchor.ts) / 1000);
+          const dA = distanceMeters(anchor.lat, anchor.lng, latRaw, lngRaw);
+
+          // Elsődlegesen a hosszabb bázis (>=6m) ad stabil irányt.
+          if (dA >= 6 && dtA <= 15) {
+            moveBearing = bearingDeg(anchor.lat, anchor.lng, latRaw, lngRaw);
+          }
+
+          // Rövid bázis fallback: ha kicsit mozdultunk, még mindig jobb, mint a 0°.
+          if (!isFinite(moveBearing) && prevRaw) {
+            const dtS = Math.max(0.001, (nowTs - prevRaw.ts) / 1000);
+            const dS = distanceMeters(prevRaw.lat, prevRaw.lng, latRaw, lngRaw);
+            if (dS >= 3 && dtS <= 10) {
+              moveBearing = bearingDeg(prevRaw.lat, prevRaw.lng, latRaw, lngRaw);
+            }
+          }
+
+          // Anchor frissítés: ha már elég nagyot mentünk, vagy túl régi.
+          if (!_prevHeadingRaw || dA >= 12 || dtA >= 8) {
+            _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+          }
+        } else {
+          _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+        }
+      } catch (_) {}
 
       // v5.42.4: sebesség hint mentése (mozgás közben ne írja felül a gyro/kompasz a heading-et)
       const speedBest = (typeof pos.coords.speed === "number" && isFinite(pos.coords.speed)) ? pos.coords.speed
@@ -1120,9 +1164,27 @@ function startMyLocationWatch(mode = "high") {
         _updateMyLocIconHeading();
       }
 
-      // fallback bázis frissítés
-      if (!_prevHeadingRaw) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
-      else if (!prevRaw || (nowTs - _prevHeadingRaw.ts) > 8000) _prevHeadingRaw = { lat: latRaw, lng: lngRaw, ts: nowTs };
+      // v5.51.7: a nav-lite eltolás irányát (bearing) külön is simítjuk.
+      // Menet közben a mozgás bearing a legjobb; állva pedig a chosenHeading (geo/kompasz) adhat támpontot.
+      try {
+        if (isFinite(moveBearing) && isFinite(moveSpeed) && moveSpeed >= 0.8 && acc <= 160) {
+          if (!isFinite(lastNavBearingDeg)) {
+            lastNavBearingDeg = moveBearing;
+          } else {
+            const d = shortestAngleDelta(lastNavBearingDeg, moveBearing);
+            const absd = Math.abs(d);
+            let k = (absd > 60) ? 0.45 : (absd > 25 ? 0.30 : 0.20);
+            if (isFinite(moveSpeed)) k = clamp(k + moveSpeed / 55, 0.20, 0.60);
+            lastNavBearingDeg = _normDeg(lastNavBearingDeg + d * k);
+          }
+        } else if (isFinite(chosenHeading) && acc <= 160) {
+          if (!isFinite(lastNavBearingDeg)) lastNavBearingDeg = chosenHeading;
+          else {
+            const d = shortestAngleDelta(lastNavBearingDeg, chosenHeading);
+            lastNavBearingDeg = _normDeg(lastNavBearingDeg + d * 0.12);
+          }
+        }
+      } catch (_) {}
 
 
       scheduleApplyNavBearing();
@@ -1875,6 +1937,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
 
+  // v5.51.7: a felső toolbar gombjainál a touch ne indítson térkép-drag-et.
+  // (különben a követés kikapcsol, és úgy tűnik, hogy a nav mód "nem működik")
+  try {
+    const tb = document.querySelector('.toolbar');
+    if (tb && window.L && L.DomEvent) {
+      L.DomEvent.disableClickPropagation(tb);
+      L.DomEvent.disableScrollPropagation(tb);
+    }
+  } catch (_) {}
+
   // v5.42.2: iránytű indítás (ha elérhető)
   startCompassIfPossible();
   scheduleApplyNavBearing();
@@ -1964,11 +2036,25 @@ if (navBtn) {
   };
   syncNavBtn();
 
+  // v5.51.7: mobilon a gombnyomás ne indítson térkép-drag-et (különben a követés kikapcsol).
+  try {
+    if (window.L && L.DomEvent) {
+      L.DomEvent.disableClickPropagation(navBtn);
+      L.DomEvent.disableScrollPropagation(navBtn);
+    }
+  } catch (_) {}
+  ["touchstart","pointerdown","mousedown"].forEach((ev) => {
+    try { navBtn.addEventListener(ev, (e) => { try { e.stopPropagation(); } catch (_) {} }, { passive: true }); } catch (_) {}
+  });
+
 
   navBtn.addEventListener("click", async () => {
     navMode = (navMode === "lite") ? "north" : "lite";
     try { localStorage.setItem("citymap_nav_mode", navMode); } catch (_) {}
     syncNavBtn();
+
+    // v5.51.7: lite módra váltáskor rövid ideig "force" az eltolás, hogy azonnal látszódjon.
+    navForceUntilTs = (navMode === "lite") ? (Date.now() + 4000) : 0;
 
     // Mindkét mód váltáskor: követés bekapcsol és saját hely középre
     myLocFollowEnabled = true;

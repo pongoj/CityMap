@@ -132,6 +132,27 @@
       font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial;
       box-shadow: 0 2px 8px rgba(0,0,0,.14);
     }
+
+    /* v5.51.7: kis Észak indikátor (a térkép nem forog, de jó vizuális referencia) */
+    #northIndicator{
+      position:fixed;
+      right:10px;
+      top:10px;
+      z-index:1200;
+      width:34px;
+      height:34px;
+      border-radius:999px;
+      background: rgba(255,255,255,.86);
+      box-shadow: 0 2px 8px rgba(0,0,0,.14);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      font-weight: 800;
+      color:#111827;
+      pointer-events:none;
+      user-select:none;
+    }
     #hint{
       position:fixed; left:10px; top:60px; z-index:1200;
       background: rgba(0,0,0,.65); color:#fff;
@@ -796,6 +817,8 @@
 </head>
 
 <body>
+
+  <div id="northIndicator" title="Észak">N↑</div>
 
   <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
     <symbol id="i-filter" viewBox="0 0 24 24">

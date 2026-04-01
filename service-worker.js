@@ -6,13 +6,19 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "5.31" és itt: CACHE_VERSION = "v5.40"
-const CACHE_VERSION = "v5.51.10";
+const CACHE_VERSION = "v5.51.11";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
   "./",
-  "./app.js",
   "./db.js",
+  "./js/version.js",
+  "./js/01_core.js",
+  "./js/02_location_nav.js",
+  "./js/03_ui_forms.js",
+  "./js/04_boot.js",
+  "./js/05_misc.js",
+  "./styles.css",
   "./manifest.json",
   "./service-worker.js",
   "./icons/icon-192.png",
@@ -55,6 +61,13 @@ self.addEventListener("fetch", (event) => {
 
   // index.html mindig hálózatról
   if (url.pathname === "/" || url.pathname.endsWith("index.html")) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Verzió ellenőrzéshez (checkForUpdateOnline) mindig hálózatról,
+  // különben a SW cache-ből jön vissza és nem derül ki a frissítés.
+  if (url.pathname.endsWith("/js/version.js")) {
     event.respondWith(fetch(event.request));
     return;
   }

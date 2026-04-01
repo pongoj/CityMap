@@ -133,7 +133,16 @@
       box-shadow: 0 2px 8px rgba(0,0,0,.14);
     }
 
-    /* v5.51.7: kis Észak indikátor (a térkép nem forog, de jó vizuális referencia) */
+
+
+    /* v5.51.8: haladási irány módban térképforgatás – a Leaflet mapPane egy wrapper-be kerül */
+    .leaflet-rotate-wrapper{
+      position:absolute;
+      left:0; top:0; right:0; bottom:0;
+      transform-origin:50% 50%;
+      will-change: transform;
+    }
+    /* v5.51.8: Észak indikátor (a térkép forgatásával együtt frissül) */
     #northIndicator{
       position:fixed;
       right:10px;
@@ -153,6 +162,17 @@
       pointer-events:none;
       user-select:none;
     }
+
+    #northIndicator .ni-inner{
+      width:100%; height:100%;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      line-height:1;
+    }
+    #northIndicator .ni-arrow{ font-size:14px; margin-top:-1px; display:block; transform-origin:50% 60%; }
+    #northIndicator .ni-n{ font-size:11px; margin-top:1px; display:block; }
     #hint{
       position:fixed; left:10px; top:60px; z-index:1200;
       background: rgba(0,0,0,.65); color:#fff;
@@ -818,7 +838,12 @@
 
 <body>
 
-  <div id="northIndicator" title="Észak">N↑</div>
+  <div id="northIndicator" title="Észak" aria-label="Észak">
+    <div class="ni-inner">
+      <span class="ni-arrow">▲</span>
+      <span class="ni-n">N</span>
+    </div>
+  </div>
 
   <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
     <symbol id="i-filter" viewBox="0 0 24 24">

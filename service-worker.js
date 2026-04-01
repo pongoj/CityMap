@@ -6,12 +6,13 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "5.31" és itt: CACHE_VERSION = "v5.40"
-const CACHE_VERSION = "v5.51.11";
+const CACHE_VERSION = "v5.51.12";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
   "./",
-  "./db.js",
+  "./index.html",
+  "./js/db.js",
   "./js/version.js",
   "./js/01_core.js",
   "./js/02_location_nav.js",
@@ -59,9 +60,17 @@ self.addEventListener("fetch", (event) => {
   // csak saját origin
   if (url.origin !== self.location.origin) return;
 
-  // index.html mindig hálózatról
-  if (url.pathname === "/" || url.pathname.endsWith("index.html")) {
-    event.respondWith(fetch(event.request));
+  // HTML navigáció mindig hálózatról (GitHub Pages alatt a path pl. /CityMap/)
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match("./index.html").then(r => r || caches.match("./")))
+    );
+    return;
+  }
+
+  // index.html explicit (pl. "index.html")
+  if (url.pathname.endsWith("index.html")) {
+    event.respondWith(fetch(event.request).catch(() => caches.match("./index.html").then(r => r || caches.match("./"))));
     return;
   }
 

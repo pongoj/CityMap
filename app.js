@@ -1,4 +1,4 @@
-const APP_VERSION = "5.51.9";
+const APP_VERSION = "5.51.10";
 
 // Helymeghatározás mód kijelzése (v5.51.5):
 // G = GPS (high accuracy / jó pontosság), N = hálózati (internet alapú / gyenge pontosság)
@@ -640,13 +640,15 @@ function updateMyLocFabVisibility() {
     btn.style.display = "none";
     return;
   }
-
   // v5.51.1: ha a GPS-követés be van kapcsolva, a 'Középre' gomb NE jelenjen meg.
-  // (lite módban szándékosan nem középen van a saját hely, ezért a régi logika állandóan mutatta.)
+  // v5.51.10: ha a követés KI van kapcsolva (user húzta/zoomolta), akkor mindig mutassuk a gombot,
+  // mert ez jelzi egyértelműen, hogy vissza lehet térni a saját hely követéséhez.
   if (myLocFollowEnabled) {
     btn.style.display = "none";
     return;
   }
+  btn.style.display = "inline-flex";
+  return;
 
   try {
     const p = map.latLngToContainerPoint([lastMyLocation.lat, lastMyLocation.lng]);
@@ -680,6 +682,51 @@ function _degToCss(d360){
   d360 = _deg360(d360);
   return ((d360 + 540) % 360) - 180;
 }
+
+// v5.51.10: Észak indikátor – north módban is a VALÓDI (kompassz/GPS) Észak felé mutasson.
+function _bestCompassHeadingDeg(){
+  try {
+    const sp = (typeof lastSpeedMps === "number" && isFinite(lastSpeedMps)) ? lastSpeedMps : NaN;
+    // Menet közben a simított mozgás-irány a legstabilabb
+    if (isFinite(sp) && sp >= 0.9) {
+      if (typeof _smoothedNavBearing === "number" && isFinite(_smoothedNavBearing)) return _smoothedNavBearing;
+      if (typeof lastNavBearingDeg === "number" && isFinite(lastNavBearingDeg)) return lastNavBearingDeg;
+    }
+    // Állva/forgás közben: iránytű (deviceorientation)
+    if (typeof lastHeadingDeg === "number" && isFinite(lastHeadingDeg)) return lastHeadingDeg;
+    // Végső fallback
+    if (typeof lastNavBearingDeg === "number" && isFinite(lastNavBearingDeg)) return lastNavBearingDeg;
+  } catch (_) {}
+  return NaN;
+}
+
+function updateNorthIndicator(){
+  try {
+    const el = document.getElementById('northIndicator');
+    const inner = el ? el.querySelector('.ni-arrow') : null;
+    if (!inner) return;
+
+    // A nyíl mindig a képernyőn a VALÓDI Észak irányába mutasson.
+    // - heading mód: a térkép forgása már -heading, ezért a mapRotCssDeg ugyanazt adja.
+    // - north mód: a térkép nem forog, ezért heading alapján forgatjuk a nyilat.
+    let cssDeg = 0;
+
+    if (navMode === 'heading') {
+      cssDeg = _mapRotCssDeg;
+    } else {
+      const h = _bestCompassHeadingDeg();
+      if (isFinite(h)) {
+        const d360 = _deg360(360 - _deg360(h)); // -h mod 360
+        cssDeg = _degToCss(d360);
+      } else {
+        cssDeg = 0;
+      }
+    }
+
+    inner.style.transform = `rotate(${cssDeg}deg)`;
+  } catch (_) {}
+}
+
 
 function initRotateWrapper(){
   try {
@@ -718,15 +765,8 @@ function _applyMapRotationNow(d360, immediate){
       _rotateWrapperEl.style.transform = `rotate(${_mapRotCssDeg}deg) scale(${scale})`;
     }
 
-    // Észak indikátor: a térkép forgatásával ellentétesen forog, így mindig a valódi Észak irányába mutat.
-    try {
-      const el = document.getElementById('northIndicator');
-      const inner = el ? el.querySelector('.ni-arrow') : null;
-      if (inner) {
-        const northDeg = -_mapRotCssDeg; // ha a térkép jobbra forog, Észak balra kerül, stb.
-        inner.style.transform = `rotate(${northDeg}deg)`;
-      }
-    } catch (_) {}
+    // Észak indikátor frissítése
+    try { updateNorthIndicator(); } catch (_) {}
   } catch (_) {}
 }
 
@@ -994,6 +1034,7 @@ function _handleDeviceOrientation(e){
     lastHeadingDeg = fusedHeadingDeg;
     _updateMyLocIconHeading();
     scheduleApplyNavBearing();
+    try { updateNorthIndicator(); } catch (_) {}
   }
 }
 
@@ -1032,6 +1073,8 @@ function _handleDeviceMotion(e){
       lastHeadingDeg = fusedHeadingDeg;
       _updateMyLocIconHeading();
       scheduleApplyNavBearing();
+      try { updateNorthIndicator(); } catch (_) {}
+      try { updateNorthIndicator(); } catch (_) {}
     }
   } catch (_) {}
 }
@@ -2124,8 +2167,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // v5.40: ha a felhasználó kézzel mozgatja/zoomolja a térképet, kikapcsoljuk a GPS-követést.
   // A "Saját helyem" gomb visszakapcsolja.
-  map.on("dragstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
-  map.on("zoomstart", (e) => { if (e && e.originalEvent) myLocFollowEnabled = false; });
+  map.on("dragstart", () => { myLocFollowEnabled = false; try { updateMyLocFabVisibility(); } catch (_) {} });
+  map.on("zoomstart", () => { myLocFollowEnabled = false; try { updateMyLocFabVisibility(); } catch (_) {} });
   map.on("moveend", () => updateMyLocFabVisibility());
   map.on("zoomend", () => updateMyLocFabVisibility());
 

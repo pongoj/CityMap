@@ -6,7 +6,7 @@ self.addEventListener("message", (event) => {
 
 // CACHE VERSION: ezt és az APP_VERSION-t együtt növeld!
 // Pl: APP_VERSION = "5.31" és itt: CACHE_VERSION = "v5.40"
-const CACHE_VERSION = "v5.51.12";
+const CACHE_VERSION = "v5.51.13";
 const CACHE_NAME = `citymap-cache-${CACHE_VERSION}`;
 
 const CORE = [
@@ -15,8 +15,11 @@ const CORE = [
   "./js/db.js",
   "./js/version.js",
   "./js/01_core.js",
+  "./js/11_photos.js",
+  "./js/10_markers_map.js",
   "./js/02_location_nav.js",
   "./js/03_ui_forms.js",
+  "./js/20_filter_export.js",
   "./js/04_boot.js",
   "./js/05_misc.js",
   "./styles.css",

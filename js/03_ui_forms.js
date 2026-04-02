@@ -266,3 +266,26 @@ function registerSW() {
   }).catch(() => {});
 }
 
+
+// Marker modal UI segédek (korábban a nav fájlban voltak)
+function setMarkerModalControlsDisabled({ addressLocked }) {
+  const city = document.getElementById("fCity");
+  const street = document.getElementById("fStreet");
+  const house = document.getElementById("fHouse");
+  const typeBtn = document.getElementById("fTypeBtn");
+  if (city) city.disabled = !!addressLocked;
+  if (street) street.disabled = !!addressLocked;
+  if (house) house.disabled = !!addressLocked;
+  if (typeBtn) typeBtn.disabled = !!addressLocked;
+}
+
+function setMarkerModalTitle(mode) {
+  const titleEl = document.getElementById("markerModalTitle");
+  const hintEl = document.getElementById("markerModalHint");
+  if (titleEl) titleEl.textContent = mode === "edit" ? "Objektum módosítása" : "Objektum rögzítése";
+  if (hintEl) {
+    hintEl.textContent = mode === "edit"
+      ? "A cím és a típus nem módosítható. Állapot, megjegyzés és fotók frissíthetők."
+      : "Bökés helyén jön létre, utána húzással finomítható.";
+  }
+}

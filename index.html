@@ -337,13 +337,38 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/db.js"></script>
   <script src="js/version.js"></script>
+
+  <!-- shared utils / tiny helpers -->
+  <script src="js/00_utils.js"></script>
+  <script src="js/06_update_check.js"></script>
+  <script src="js/06_map_utils.js"></script>
+
+  <!-- core state -->
   <script src="js/01_core.js"></script>
+
+  <!-- marker/photos -->
   <script src="js/11_photos.js"></script>
   <script src="js/10_markers_map.js"></script>
-  <script src="js/05_misc.js"></script>
-  <script src="js/02_location_nav.js"></script>
+
+  <!-- settings -->
+  <script src="js/30_settings_modal.js"></script>
+  <script src="js/32_color_editor.js"></script>
+  <script src="js/31_settings_types.js"></script>
+  <script src="js/33_settings_status.js"></script>
+
+  <!-- location / navigation -->
+  <script src="js/40_nav_mode.js"></script>
+  <script src="js/41_nav_rotation.js"></script>
+  <script src="js/42_compass_motion.js"></script>
+  <script src="js/43_geolocation_watch.js"></script>
+
+  <!-- forms + filter/export -->
   <script src="js/03_ui_forms.js"></script>
   <script src="js/20_filter_export.js"></script>
+
+  <!-- boot helpers -->
+  <script src="js/61_header_filter_pops.js"></script>
+  <script src="js/60_longpress_add.js"></script>
   <script src="js/04_boot.js"></script>
   <div id="cmPickPanel" class="pick-panel" style="display:none"></div>
 </body>

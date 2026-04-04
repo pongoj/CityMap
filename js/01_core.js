@@ -151,8 +151,13 @@ function iconForMarker(m, zoom) {
   const meta = m && Number.isFinite(Number(m.typeId)) ? _typeMetaById.get(Number(m.typeId)) : null;
   const color = meta && meta.color ? meta.color : "#6b7280";
 
-  return new L.Icon({
-    iconUrl: markerSvgDataUrl(color),
+  // v5.51.15: heading-up térképforgatásnál az objektum markerek NE forogjanak a térképpel.
+  // Ehhez L.divIcon-t használunk: a Leaflet a DIV-et pozícionálja (transform),
+  // a belső IMG-t pedig CSS-ben ellenforgatjuk (--cm-map-rot-inv-deg).
+  const url = markerSvgDataUrl(color);
+  return L.divIcon({
+    className: 'cm-obj-marker',
+    html: `<img class="cm-obj-marker-img" src="${url}" alt="marker" style="width:${size[0]}px;height:${size[1]}px;">`,
     iconSize: size,
     iconAnchor: anchor,
     popupAnchor: popup,

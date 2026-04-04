@@ -93,6 +93,15 @@ function _applyMapRotationNow(d360, immediate){
     _mapRotDeg360 = _deg360(d360);
     _mapRotCssDeg = _degToCss(_mapRotDeg360);
 
+    // v5.51.15: CSS változók – az objektum markerek ellenforgatásához.
+    // A Leaflet a marker pozícióját a parent elem transform-ján keresztül állítja be,
+    // ezért itt csak CSS változót adunk, a tényleges ellenforgatás a belső IMG-vel történik.
+    try {
+      const root = document.documentElement;
+      root.style.setProperty('--cm-map-rot-deg', `${_mapRotCssDeg}deg`);
+      root.style.setProperty('--cm-map-rot-inv-deg', `${(-_mapRotCssDeg)}deg`);
+    } catch (_) {}
+
     if (_rotateWrapperEl) {
       // kis skála, hogy forgatásnál ne látszódjon a sarokban üres rész
       const scale = (Math.abs(_mapRotCssDeg) > 0.01) ? 1.12 : 1;

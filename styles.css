@@ -126,6 +126,20 @@
       transform-origin:50% 50%;
       will-change: transform;
     }
+
+    /* v5.51.15: heading-up módban a térkép forog, de az OBJEKTUM markerek maradjanak "függőlegesek"
+       (ne forduljanak el a térképpel). Ezért a marker icon DIV belső IMG-jét ellenforgatjuk. */
+    .cm-obj-marker{
+      background: transparent !important;
+      border: 0 !important;
+    }
+    .cm-obj-marker-img{
+      display:block;
+      transform-origin: 50% 60%;
+      transform: rotate(var(--cm-map-rot-inv-deg, 0deg));
+      will-change: transform;
+      pointer-events: none; /* a kattintást a wrapper DIV kapja */
+    }
     /* v5.51.8: Észak indikátor (a térkép forgatásával együtt frissül) */
     #northIndicator{
       position:fixed;

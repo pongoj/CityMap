@@ -7,6 +7,9 @@ let _prevHeadingRaw = null; // {lat,lng,ts}
 let lastRawMyLocation = null;        // {lat,lng,ts,acc}
 let filteredMyLocation = null;       // {lat,lng,ts}
 let lastCenteredMyLocation = null;   // {lat,lng}
+let followCenterFiltered = null;   // {lat,lng} (map center EMA)
+let followCenterTs = 0;             // ts of followCenterFiltered
+
 let lastMyLocation = null;           // { lat:number, lng:number, ts:number } (utolsó simított)
 
 const myLocWaiters = new Set(); // resolves waiting for first fix
@@ -49,6 +52,54 @@ function pickAlpha(speedMps, accM) {
   // nagyon jó pontosságnál kicsit kevésbé simítunk (gyorsabb reakció)
   if (accM <= 8) a = Math.min(0.45, a + 0.05);
   return a;
+
+
+// Map-follow smoothing (separate from marker smoothing):
+// We keep an EMA of the desired follow-center so the map does not "wait then snap".
+function smoothFollowCenter(desired, speedMps, accM, nowTs, dcMeters) {
+  try {
+    if (!desired || !isFinite(desired.lat) || !isFinite(desired.lng)) return desired;
+    if (!followCenterFiltered || !isFinite(followCenterFiltered.lat) || !isFinite(followCenterFiltered.lng)) {
+      followCenterFiltered = { lat: desired.lat, lng: desired.lng };
+      followCenterTs = nowTs || Date.now();
+      return followCenterFiltered;
+    }
+
+    const dtMs = Math.max(16, (nowTs || Date.now()) - (followCenterTs || (nowTs || Date.now())));
+    followCenterTs = nowTs || Date.now();
+
+    let sp = speedMps;
+    if (!isFinite(sp)) sp = 0;
+
+    // time constant (ms): smaller = faster follow, larger = smoother
+    let tau = 950;
+    if (sp < 0.7) tau = 1700;
+    else if (sp < 2.5) tau = 1200;
+    else if (sp < 7.0) tau = 900;
+    else tau = 700;
+
+    if (isFinite(accM)) {
+      if (accM > 160) tau *= 1.8;
+      else if (accM > 90) tau *= 1.45;
+      else if (accM > 55) tau *= 1.20;
+      else if (accM < 15) tau *= 0.85;
+    }
+
+    // catch-up when far away (e.g., after a tunnel / jitter)
+    if (isFinite(dcMeters)) {
+      if (dcMeters > 45) tau *= 0.35;
+      else if (dcMeters > 20) tau *= 0.55;
+      else if (dcMeters > 10) tau *= 0.80;
+    }
+
+    const a = clamp(dtMs / tau, 0.05, 0.65);
+    followCenterFiltered.lat += (desired.lat - followCenterFiltered.lat) * a;
+    followCenterFiltered.lng += (desired.lng - followCenterFiltered.lng) * a;
+    return followCenterFiltered;
+  } catch (_) {
+    return desired;
+  }
+}
 }
 
 let myLocAnim = { raf: null, from: null, to: null, start: 0, dur: GPS_MARKER_ANIM_MS };
@@ -376,19 +427,26 @@ function startMyLocationWatch(mode = "high") {
 
         // állva + kicsi drift esetén ne mozogjon a térkép
         if (!(still && dc < nearM)) {
-          const minInterval = lowQ ? 900 : ((navMode === "heading") ? 320 : 520);
+          // Gyakoribb, de kisebb lépésű követés = kevesebb "rántás"
+          const minInterval = lowQ ? 850 : ((navMode === "heading") ? 260 : 360);
           if ((nowTs - lastMyLocCenterTs) >= minInterval) {
-            // az intervalt előbb számoljuk, majd a duration-t már a várható frissítéshez igazítjuk
             const dt = Math.max(200, nowTs - (lastMyLocCenterTs || nowTs));
             lastMyLocCenterTs = nowTs;
-            lastCenteredMyLocation = { lat: desired.lat, lng: desired.lng };
 
-            let dur = lowQ ? 0.0 : clamp(dt / 1000 * 0.85, 0.35, 0.85);
+            // EMA a kívánt centerre: ez csillapítja a bearing/offset és a GPS zaj okozta remegést
+            const sm = smoothFollowCenter(desired, speed, acc, nowTs, dc);
 
-            const fast = (isFinite(speed) && speed >= 10);
+            lastCenteredMyLocation = { lat: sm.lat, lng: sm.lng };
+
+            // Pan animáció: a frissítési ütemhez igazítva, hogy folyékony legyen.
+            const fast = (isFinite(speed) && speed >= 12);
+            let dur = clamp(dt / 1000 * 0.95, 0.25, 0.80);
+            if (fast) dur = 0.28;
+            if (lowQ) dur = clamp(dt / 1000 * 0.85, 0.35, 0.95);
+
             try { map.stop(); } catch (_) {}
-            map.panTo([desired.lat, desired.lng], {
-              animate: (!fast && !lowQ),
+            map.panTo([sm.lat, sm.lng], {
+              animate: (!lowQ),
               duration: dur,
               easeLinearity: 0.25,
               noMoveStart: true,
@@ -499,6 +557,8 @@ async function centerToMyLocation() {
     const desired = desiredFollowCenter(lastMyLocation.lat, lastMyLocation.lng, sp, accM);
     map.setView([desired.lat, desired.lng], 20, { animate: true, duration: 0.6 });
     lastCenteredMyLocation = { lat: desired.lat, lng: desired.lng };
+    followCenterFiltered = { lat: desired.lat, lng: desired.lng };
+    followCenterTs = Date.now();
   }
     // lastCenteredMyLocation fentebb beállítva (lite módban előretolt centerrel)
     await ensureMyLocationMarker(lastMyLocation.lat, lastMyLocation.lng, false);
@@ -528,6 +588,8 @@ async function centerToMyLocation() {
           const desired = desiredFollowCenter(lat, lng, sp, accM);
           map.setView([desired.lat, desired.lng], 20, { animate: true, duration: 0.6 });
           lastCenteredMyLocation = { lat: desired.lat, lng: desired.lng };
+    followCenterFiltered = { lat: desired.lat, lng: desired.lng };
+    followCenterTs = Date.now();
         }
         await ensureMyLocationMarker(lat, lng, true);
 
